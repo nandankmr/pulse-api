@@ -1,5 +1,17 @@
-export const config = {
-  port: process.env.PORT || 3000,
-  databaseUrl: process.env.DATABASE_URL || 'sqlite:memory:',
-  jwtSecret: process.env.JWT_SECRET || 'default-secret',
-};
+import { config as envConfig } from './env.config';
+import { logger } from '../shared/utils/logger';
+
+// Validate configuration on startup
+try {
+  logger.info('Environment configuration loaded successfully', {
+    nodeEnv: envConfig.NODE_ENV,
+    port: envConfig.PORT,
+    logLevel: envConfig.LOG_LEVEL,
+  });
+} catch (error) {
+  logger.error('Failed to load environment configuration', { error: error instanceof Error ? error.message : String(error) });
+  process.exit(1);
+}
+
+export { legacyConfig } from './env.config';
+export { config } from './env.config';
