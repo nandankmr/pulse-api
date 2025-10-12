@@ -9,13 +9,18 @@ const userService = new UserService();
 export class UserController {
   async getUser(req: Request, res: Response): Promise<void> {
     try {
-      logger.info('Getting user', { userId: req.params.id });
-      const user = await userService.getUser(Number(req.params.id));
+      const userId = req.params.id;
+      if (!userId) {
+        throw new ValidationError('User ID is required');
+      }
+
+      logger.info('Getting user', { userId });
+      const user = await userService.getUser(userId);
       if (!user) {
-        logger.warn('User not found', { userId: req.params.id });
+        logger.warn('User not found', { userId });
         throw new NotFoundError('User');
       }
-      logger.info('User retrieved successfully', { userId: req.params.id, userEmail: user.email });
+      logger.info('User retrieved successfully', { userId, userEmail: user.email });
       res.json(user);
     } catch (error) {
       logger.error('Error getting user', { userId: req.params.id, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });

@@ -5,7 +5,7 @@ import { PaginationOptions, PaginatedResult, PaginationUtils } from '../../share
 const prisma = new PrismaClient();
 
 export class UserRepository {
-  async findById(id: number): Promise<User | null> {
+  async findById(id: string): Promise<User | null> {
     try {
       logger.info('Finding user by ID', { userId: id });
       const user = await prisma.user.findUnique({
@@ -23,7 +23,7 @@ export class UserRepository {
     }
   }
 
-  async save(userData: { name: string; email: string }): Promise<User> {
+  async save(userData: { name: string; email: string; password: string }): Promise<User> {
     try {
       logger.info('Saving new user', { userEmail: userData.email, userName: userData.name });
       const user = await prisma.user.create({
@@ -46,13 +46,10 @@ export class UserRepository {
         : { page: 1, limit: 10, offset: 0 };
 
       // Get total count
-      const total = await prisma.user.count({
-        where: { deletedAt: null },
-      });
+      const total = await prisma.user.count();
 
       // Get paginated data
       const users = await prisma.user.findMany({
-        where: { deletedAt: null },
         skip: offset || 0,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -68,12 +65,12 @@ export class UserRepository {
     }
   }
 
-  async softDelete(id: number): Promise<User> {
+  async softDelete(id: string): Promise<User> {
     try {
       logger.info('Soft deleting user', { userId: id });
       const user = await prisma.user.update({
         where: { id },
-        data: { deletedAt: new Date() },
+        data: { verified: false }, // For now, just mark as unverified instead of soft delete
       });
       logger.info('User soft deleted successfully', { userId: id, userEmail: user.email });
       return user;

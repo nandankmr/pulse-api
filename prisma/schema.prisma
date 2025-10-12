@@ -1,26 +1,149 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
+// User Model - Stores user credentials, profile info, and verification status
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
+  id             String     @id @default(uuid())
+  name           String
+  email          String     @unique
+  password       String
+  avatarUrl      String?
+  verified       Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  messagesSent   Message[]  @relation("SentMessages")
+  messagesReceived Message[] @relation("ReceivedMessages")
+  groupMemberships GroupMember[]
+  verificationTokens VerificationToken[]
+  deviceSessions DeviceSession[]
+  media          Media[]    @relation("MediaUploader")
 
   @@map("users")
+}
+
+// Message Model - Handles both private and group messages with media/location support
+model Message {
+  id          String   @id @default(uuid())
+  senderId    String
+  receiverId  String?   // For 1-1 chats
+  groupId     String?   // For group chats
+  type        MessageType @default(TEXT)
+  content     String?
+  mediaUrl    String?   // S3 / OCI media URL
+  location    Json?     // { latitude, longitude }
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sender      User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiver    User?     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  group       Group?    @relation(fields: [groupId], references: [id])
+  media       Media?    @relation("MessageMedia")
+
+  @@map("messages")
+}
+
+// Group Model - Stores group-level metadata and relationships
+model Group {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  avatarUrl   String?
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  members     GroupMember[]
+  messages    Message[]
+
+  @@map("groups")
+}
+
+// GroupMember Model - Links users to groups with role-based access
+model GroupMember {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  role      GroupRole @default(MEMBER)
+  joinedAt  DateTime @default(now())
+
+  group     Group   @relation(fields: [groupId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@unique([groupId, userId]) // Prevent duplicate memberships
+  @@map("group_members")
+}
+
+// VerificationToken Model - Stores email verification and password reset tokens
+model VerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  type      TokenType
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("verification_tokens")
+}
+
+// DeviceSession Model - Tracks active user devices for session control
+model DeviceSession {
+  id        String   @id @default(uuid())
+  userId    String
+  deviceId  String
+  platform  String
+  lastActive DateTime @default(now())
+  token     String?
+
+  user      User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("device_sessions")
+}
+
+// Media Model (Optional) - Track uploaded files separately for analytics
+model Media {
+  id         String   @id @default(uuid())
+  uploaderId String
+  url        String
+  type       String
+  size       Int?
+  messageId  String?  @unique
+
+  uploader   User     @relation("MediaUploader", fields: [uploaderId], references: [id])
+  message    Message? @relation("MessageMedia", fields: [messageId], references: [id])
+
+  createdAt  DateTime @default(now())
+
+  @@map("media")
+}
+
+// Enums for type safety
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  LOCATION
+  FILE
+}
+
+enum GroupRole {
+  ADMIN
+  MEMBER
+}
+
+enum TokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
 }

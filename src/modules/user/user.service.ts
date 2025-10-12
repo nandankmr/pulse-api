@@ -15,7 +15,7 @@ export class UserService {
    * @param id - The unique identifier of the user
    * @returns Promise resolving to the user object or null if not found
    */
-  async getUser(id: number): Promise<User | null> {
+  async getUser(id: string): Promise<User | null> {
     try {
       // Check cache first
       const cacheKey = `user:${id}`;
@@ -53,7 +53,7 @@ export class UserService {
     }
   }
 
-  async createUser(userData: { name: string; email: string }): Promise<User> {
+  async createUser(userData: { name: string; email: string; password: string }): Promise<User> {
     try {
       logger.info('Creating user in database', { userEmail: userData.email, userName: userData.name });
       const user = await userRepository.save(userData);
@@ -71,7 +71,7 @@ export class UserService {
   }
 
   // Method to invalidate user cache (useful for updates/deletes)
-  async invalidateUserCache(id: number): Promise<void> {
+  async invalidateUserCache(id: string): Promise<void> {
     const cacheKey = `user:${id}`;
     userCache.delete(cacheKey);
     logger.info('User cache invalidated', { userId: id });
