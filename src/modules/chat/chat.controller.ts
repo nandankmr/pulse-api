@@ -640,12 +640,26 @@ export class ChatController {
       // Broadcast to all chat participants via Socket.IO
       if (io) {
         const socketPayload = {
-          message: result.message,
+          message: messageResponse,
           tempId: req.body.tempId, // Support for optimistic updates
         };
 
-        // Broadcast to chat room (works for both DM and group)
-        io.to(chatId).emit('message:new', socketPayload);
+        if (group) {
+          // For groups, broadcast to group room
+          io.to(`group:${chatId}`).emit('message:new', socketPayload);
+          console.log(`📡 Broadcasting to group:${chatId}`);
+        } else {
+          // For DMs, send to both participants
+          const conversation = await prisma.directConversation.findUnique({
+            where: { id: chatId },
+          });
+          
+          if (conversation) {
+            io.to(`user:${conversation.userAId}`).emit('message:new', socketPayload);
+            io.to(`user:${conversation.userBId}`).emit('message:new', socketPayload);
+            console.log(`📡 Broadcasting to user:${conversation.userAId} and user:${conversation.userBId}`);
+          }
+        }
       }
 
       logger.info('Message sent via API', {
