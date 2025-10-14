@@ -642,7 +642,7 @@ export class ChatController {
         const socketPayload = {
           message: messageResponse,
           tempId: req.body.tempId, // Support for optimistic updates
-        };
+        } as any; // Type assertion for Socket.IO payload
 
         if (group) {
           // For groups, broadcast to group room
