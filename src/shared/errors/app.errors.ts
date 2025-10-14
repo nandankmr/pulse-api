@@ -1,5 +1,16 @@
 import { BaseError } from './base.error';
 
+export class AppError extends BaseError {
+  statusCode: number;
+  errorCode: string;
+
+  constructor(message: string, statusCode: number, errorCode: string) {
+    super(message);
+    this.statusCode = statusCode;
+    this.errorCode = errorCode;
+  }
+}
+
 export class NotFoundError extends BaseError {
   statusCode = 404;
   errorCode = 'NOT_FOUND';
@@ -12,18 +23,20 @@ export class NotFoundError extends BaseError {
 export class ValidationError extends BaseError {
   statusCode = 400;
   errorCode = 'VALIDATION_ERROR';
-
   constructor(message: string) {
     super(message);
   }
 }
 
-export class ConflictError extends BaseError {
-  statusCode = 409;
-  errorCode = 'CONFLICT';
+export class ConflictError extends AppError {
+  constructor(message = 'Conflict occurred') {
+    super(message, 409, 'CONFLICT_ERROR');
+  }
+}
 
-  constructor(message: string) {
-    super(message);
+export class UnauthorizedError extends AppError {
+  constructor(message = 'Unauthorized') {
+    super(message, 401, 'UNAUTHORIZED');
   }
 }
 

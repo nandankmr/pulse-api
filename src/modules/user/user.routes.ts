@@ -1,11 +1,22 @@
 import { Router } from 'express';
 import { UserController } from './user.controller';
+import { createAvatarUploader } from '../../shared/utils/upload';
+import { createProtectedRouter } from '../../shared/middleware/auth.guard';
 
-const router = Router();
+const publicRouter = Router();
+const protectedRouter = createProtectedRouter();
 const userController = new UserController();
+const upload = createAvatarUploader();
 
-router.get('/', userController.getAllUsers.bind(userController));
-router.get('/:id', userController.getUser.bind(userController));
-router.post('/', userController.createUser.bind(userController));
+publicRouter.get('/search', userController.searchUsers.bind(userController));
+publicRouter.get('/', userController.getAllUsers.bind(userController));
+publicRouter.get('/:id', userController.getUser.bind(userController));
+publicRouter.post('/', userController.createUser.bind(userController));
 
-export default router; 
+protectedRouter.get('/me', userController.getCurrentUser.bind(userController));
+protectedRouter.put('/me', userController.updateProfile.bind(userController));
+protectedRouter.post('/me/avatar', upload.single('avatar'), userController.uploadAvatar.bind(userController));
+
+publicRouter.use(protectedRouter);
+
+export default publicRouter;

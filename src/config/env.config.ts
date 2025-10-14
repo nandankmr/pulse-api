@@ -14,6 +14,14 @@ export interface EnvironmentConfig {
   LOG_LEVEL: 'error' | 'warn' | 'info' | 'debug';
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
+  JWT_REFRESH_EXPIRES_IN: string;
+  SMTP_HOST: string;
+  SMTP_PORT: number;
+  SMTP_USER: string;
+  SMTP_PASSWORD: string;
+  MAIL_FROM: string;
+  APP_URL: string;
+  USER_AVATAR_STORAGE_PATH: string;
   SENTRY_DSN?: string;
   NEW_RELIC_LICENSE_KEY?: string;
   API_VERSION: string;
@@ -41,6 +49,14 @@ function validateEnvironment(): EnvironmentConfig {
       LOG_LEVEL: getEnvVar('LOG_LEVEL', 'info') as EnvironmentConfig['LOG_LEVEL'],
       JWT_SECRET: getEnvVar('JWT_SECRET', 'your-super-secret-jwt-key-at-least-32-characters-long'),
       JWT_EXPIRES_IN: getEnvVar('JWT_EXPIRES_IN', '24h'),
+      JWT_REFRESH_EXPIRES_IN: getEnvVar('JWT_REFRESH_EXPIRES_IN', '7d'),
+      SMTP_HOST: getEnvVar('SMTP_HOST', 'localhost'),
+      SMTP_PORT: getEnvVar('SMTP_PORT', '1025', Number),
+      SMTP_USER: getEnvVar('SMTP_USER', ''),
+      SMTP_PASSWORD: getEnvVar('SMTP_PASSWORD', ''),
+      MAIL_FROM: getEnvVar('MAIL_FROM', 'no-reply@pulse-api.com'),
+      APP_URL: getEnvVar('APP_URL', 'http://localhost:3000'),
+      USER_AVATAR_STORAGE_PATH: getEnvVar('USER_AVATAR_STORAGE_PATH', './storage/avatars'),
       API_VERSION: getEnvVar('API_VERSION', 'v1'),
       API_PREFIX: getEnvVar('API_PREFIX', '/api'),
       CACHE_TTL: getEnvVar('CACHE_TTL', '300', Number),
@@ -50,8 +66,8 @@ function validateEnvironment(): EnvironmentConfig {
     if (config.JWT_SECRET.length < 32) {
       throw new Error('JWT_SECRET must be at least 32 characters long');
     }
-
-    if (!config.DATABASE_URL.startsWith('file:') && !config.DATABASE_URL.startsWith('postgresql:')) {
+    console.log(config.DATABASE_URL);
+    if (!config.DATABASE_URL.startsWith('file:') && !config.DATABASE_URL.startsWith('postgres:')) {
       throw new Error('DATABASE_URL must be a valid SQLite file path or PostgreSQL connection string');
     }
 
@@ -91,6 +107,34 @@ export function getServerConfig() {
     env: config.NODE_ENV,
     apiVersion: config.API_VERSION,
     apiPrefix: config.API_PREFIX,
+  };
+}
+
+export function getAuthConfig() {
+  return {
+    accessTokenTtl: config.JWT_EXPIRES_IN,
+    refreshTokenTtl: config.JWT_REFRESH_EXPIRES_IN,
+    secret: config.JWT_SECRET,
+  };
+}
+
+export function getMailConfig() {
+  return {
+    host: config.SMTP_HOST,
+    port: config.SMTP_PORT,
+    user: config.SMTP_USER,
+    password: config.SMTP_PASSWORD,
+    from: config.MAIL_FROM,
+  };
+}
+
+export function getAppUrl(): string {
+  return config.APP_URL;
+}
+
+export function getStorageConfig() {
+  return {
+    avatarPath: config.USER_AVATAR_STORAGE_PATH,
   };
 }
 

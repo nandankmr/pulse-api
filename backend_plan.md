@@ -225,12 +225,12 @@ npm install bcryptjs jsonwebtoken cookie-parser nodemailer @types/bcryptjs @type
 
 **Frontend requirement**: POST /api/auth/register, POST /api/auth/login, POST /api/auth/refresh endpoints
 
-### Step 2.2: Implement Email Verification
-- Create email verification service
-- Add token generation and validation
-- Set up email templates
+### Step 2.2: Implement Email Verification (OTP-Based)
+- Create OTP email verification service
+- Add OTP generation, storage, validation, and expiry handling
+- Set up email templates and delivery using SMTP
 
-**Frontend requirement**: GET /api/auth/verify-email endpoint for email verification
+**Frontend requirement**: POST /api/auth/verify-email endpoint for OTP submission
 
 ### Step 2.3: Implement User Profile Management
 - Create user service for profile updates

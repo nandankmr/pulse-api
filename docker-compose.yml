@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  pulse-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pulse-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # Server
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      
+      # Database (External)
+      DATABASE_URL: ${DATABASE_URL}
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      
+      # SMTP (External)
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
+      
+      # Storage
+      USER_AVATAR_STORAGE_PATH: ${USER_AVATAR_STORAGE_PATH:-./storage/avatars}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # API
+      API_VERSION: ${API_VERSION:-v1}
+      API_PREFIX: ${API_PREFIX:-/api}
+      
+      # Cache
+      CACHE_TTL: ${CACHE_TTL:-300}
+      
+      # Socket.IO
+      SOCKET_CORS_ORIGINS: ${SOCKET_CORS_ORIGINS:-*}
+      
+      # Optional: Redis for Socket.IO scaling
+      SOCKET_REDIS_URL: ${SOCKET_REDIS_URL:-}
+      
+      # Optional: Monitoring
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+    
+    volumes:
+      # Persist uploaded files and avatars
+      - ./storage:/app/storage
+      - ./uploads:/app/uploads
+    
+    networks:
+      - pulse-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+networks:
+  pulse-network:
+    driver: bridge

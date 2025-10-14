@@ -24,9 +24,13 @@ model User {
   messagesSent   Message[]  @relation("SentMessages")
   messagesReceived Message[] @relation("ReceivedMessages")
   groupMemberships GroupMember[]
+  groupInvitationsSent GroupInvitation[] @relation("GroupInvitationInviter")
+  directConversationsInitiated DirectConversation[] @relation("DirectConversationUserA")
+  directConversationsReceived DirectConversation[] @relation("DirectConversationUserB")
   verificationTokens VerificationToken[]
   deviceSessions DeviceSession[]
   media          Media[]    @relation("MediaUploader")
+  messageReceipts MessageReceipt[]
 
   @@map("users")
 }
@@ -37,19 +41,40 @@ model Message {
   senderId    String
   receiverId  String?   // For 1-1 chats
   groupId     String?   // For group chats
+  conversationId String?
   type        MessageType @default(TEXT)
   content     String?
   mediaUrl    String?   // S3 / OCI media URL
   location    Json?     // { latitude, longitude }
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  editedAt    DateTime? // When message was last edited
+  deletedAt   DateTime?
+  deletedBy   String?   // User ID who deleted the message
 
   sender      User      @relation("SentMessages", fields: [senderId], references: [id])
   receiver    User?     @relation("ReceivedMessages", fields: [receiverId], references: [id])
   group       Group?    @relation(fields: [groupId], references: [id])
+  conversation DirectConversation? @relation("ConversationMessages", fields: [conversationId], references: [id])
   media       Media?    @relation("MessageMedia")
+  receipts    MessageReceipt[]
 
   @@map("messages")
+}
+
+model DirectConversation {
+  id        String   @id @default(uuid())
+  userAId   String
+  userBId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userA User @relation("DirectConversationUserA", fields: [userAId], references: [id])
+  userB User @relation("DirectConversationUserB", fields: [userBId], references: [id])
+  messages Message[] @relation("ConversationMessages")
+
+  @@unique([userAId, userBId])
+  @@map("direct_conversations")
 }
 
 // Group Model - Stores group-level metadata and relationships
@@ -64,6 +89,7 @@ model Group {
 
   members     GroupMember[]
   messages    Message[]
+  invitations GroupInvitation[]
 
   @@map("groups")
 }
@@ -81,6 +107,22 @@ model GroupMember {
 
   @@unique([groupId, userId]) // Prevent duplicate memberships
   @@map("group_members")
+}
+
+model GroupInvitation {
+  id           String   @id @default(uuid())
+  groupId      String
+  inviterId    String
+  token        String   @unique
+  inviteeEmail String?
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  group   Group @relation(fields: [groupId], references: [id])
+  inviter User  @relation("GroupInvitationInviter", fields: [inviterId], references: [id])
+
+  @@map("group_invitations")
 }
 
 // VerificationToken Model - Stores email verification and password reset tokens
@@ -129,6 +171,23 @@ model Media {
   @@map("media")
 }
 
+model MessageReceipt {
+  id        String                @id @default(uuid())
+  messageId String
+  userId    String
+  status    MessageReceiptStatus  @default(DELIVERED)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  message   Message @relation(fields: [messageId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@index([messageId])
+  @@map("message_receipts")
+}
+
 // Enums for type safety
 enum MessageType {
   TEXT
@@ -136,6 +195,11 @@ enum MessageType {
   VIDEO
   LOCATION
   FILE
+}
+
+enum MessageReceiptStatus {
+  DELIVERED
+  READ
 }
 
 enum GroupRole {
