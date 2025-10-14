@@ -11,6 +11,9 @@ npm-debug.log
 dist
 build
 
+# But keep generated Prisma client during build
+!src/generated
+
 # Storage and uploads (will be created in container)
 storage
 uploads

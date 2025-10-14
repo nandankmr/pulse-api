@@ -4,10 +4,11 @@
   "description": "A simple Node.js TypeScript starter project",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && npm run postbuild",
+    "build": "npx prisma generate && tsc && npm run postbuild",
     "postbuild": "mkdir -p dist/generated && cp -r src/generated/prisma dist/generated/",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "deploy": "npm run build && npm run start",
     "dev:simple": "ts-node src/index.ts",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
