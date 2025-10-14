@@ -109,12 +109,12 @@ export class AttachmentController {
         size: file.size,
         mimetype: file.mimetype,
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('❌ File upload error:', error);
       logger.error('File upload error:', error);
       res.status(500).json({ 
         error: 'File upload failed',
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
@@ -125,6 +125,12 @@ export class AttachmentController {
   async serveFile(req: Request, res: Response): Promise<void> {
     try {
       const { filename } = req.params;
+      
+      if (!filename) {
+        res.status(400).json({ error: 'Filename is required' });
+        return;
+      }
+      
       const filePath = path.join(uploadDir, filename);
 
       // Check if file exists

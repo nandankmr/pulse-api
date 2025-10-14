@@ -9,15 +9,16 @@ const router = Router();
  * @desc    Upload a file
  * @access  Private
  */
-router.post('/upload', authenticate, (req: Request, res: Response, next: NextFunction) => {
+router.post('/upload', authenticate, (req: Request, res: Response, next: NextFunction): void => {
   console.log('🔵 Upload route hit');
-  uploadMiddleware(req, res, (err: any) => {
+  uploadMiddleware(req, res, (err: unknown) => {
     if (err) {
       console.error('❌ Multer error:', err);
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'File upload failed',
-        message: err.message,
+        message: err instanceof Error ? err.message : 'Unknown error',
       });
+      return;
     }
     attachmentController.uploadFile(req, res);
   });
