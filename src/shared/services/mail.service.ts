@@ -14,6 +14,10 @@ const transporter = nodemailer.createTransport({
         pass: mailConfig.password,
       }
     : undefined,
+  // Add connection timeout and socket timeout to prevent hanging
+  connectionTimeout: 30000, // 30 seconds
+  greetingTimeout: 30000,   // 30 seconds
+  socketTimeout: 30000,     // 30 seconds
 });
 
 export async function sendMail(options: { to: string; subject: string; html: string; text?: string }): Promise<void> {

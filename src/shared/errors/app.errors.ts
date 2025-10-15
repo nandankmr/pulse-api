@@ -23,8 +23,23 @@ export class NotFoundError extends BaseError {
 export class ValidationError extends BaseError {
   statusCode = 400;
   errorCode = 'VALIDATION_ERROR';
-  constructor(message: string) {
+  data?: any;
+  
+  constructor(message: string, data?: any) {
     super(message);
+    this.data = data;
+  }
+
+  toJSON() {
+    const json: any = {
+      message: this.message,
+      statusCode: this.statusCode,
+      errorCode: this.errorCode,
+    };
+    if (this.data) {
+      json.data = this.data;
+    }
+    return json;
   }
 }
 

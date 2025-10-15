@@ -144,26 +144,37 @@ export class AuthService {
     });
 
     // Send verification email outside transaction (non-critical operation)
-    const appUrl = getAppUrl();
-    const verificationUrl = `${appUrl}/verify-email?email=${encodeURIComponent(input.email)}`;
+    // Wrapped in try-catch to prevent registration failure if email sending fails
+    try {
+      const appUrl = getAppUrl();
+      const verificationUrl = `${appUrl}/verify-email?email=${encodeURIComponent(input.email)}`;
 
-    const emailHtml = `
-      <p>Hi there,</p>
-      <p>Your Pulse verification code is:</p>
-      <h2 style="font-size: 24px; letter-spacing: 4px;">${result.otp}</h2>
-      <p>This code will expire in 10 minutes. Enter it in the app to verify your email.</p>
-      <p>If you did not create an account, you can ignore this email.</p>
-      <p>Or <a href="${verificationUrl}">open the verification screen</a>.</p>
-    `;
+      const emailHtml = `
+        <p>Hi there,</p>
+        <p>Your Pulse verification code is:</p>
+        <h2 style="font-size: 24px; letter-spacing: 4px;">${result.otp}</h2>
+        <p>This code will expire in 10 minutes. Enter it in the app to verify your email.</p>
+        <p>If you did not create an account, you can ignore this email.</p>
+        <p>Or <a href="${verificationUrl}">open the verification screen</a>.</p>
+      `;
 
-    await sendMail({
-      to: input.email,
-      subject: 'Verify your Pulse account',
-      html: emailHtml,
-      text: `Your Pulse verification code is ${result.otp}. It expires in 10 minutes.`,
-    });
+      await sendMail({
+        to: input.email,
+        subject: 'Verify your Pulse account',
+        html: emailHtml,
+        text: `Your Pulse verification code is ${result.otp}. It expires in 10 minutes.`,
+      });
 
-    logger.info('Verification OTP sent', { userId: result.user.id, email: input.email });
+      logger.info('Verification OTP sent', { userId: result.user.id, email: input.email });
+    } catch (emailError) {
+      // Log email failure but don't fail the registration
+      logger.error('Failed to send verification email during registration', {
+        userId: result.user.id,
+        email: input.email,
+        error: emailError instanceof Error ? emailError.message : String(emailError),
+      });
+      // Registration still succeeds - user can request resend later
+    }
 
     return {
       user: this.sanitizeUser(result.user),
@@ -180,6 +191,19 @@ export class AuthService {
     const isMatch = await comparePassword(input.password, user.password);
     if (!isMatch) {
       throw new UnauthorizedError('Invalid email or password');
+    }
+
+    // Check if user email is verified
+    if (!user.verified) {
+      // Generate and send new verification OTP
+      await this.createVerificationToken(user.id, user.email);
+      
+      // Return special response indicating email verification needed
+      throw new ValidationError('Email not verified. A new verification code has been sent to your email.', {
+        code: 'EMAIL_NOT_VERIFIED',
+        email: user.email,
+        userId: user.id,
+      });
     }
 
     const deviceContext = this.buildDeviceContext({
@@ -251,6 +275,7 @@ export class AuthService {
   }
 
   private sanitizeUser(user: User): Omit<User, 'password'> {
+    // eslint-disable-next-line no-unused-vars
     const { password: _password, ...safeUser } = user;
     return safeUser;
   }
@@ -371,26 +396,36 @@ export class AuthService {
       },
     });
 
-    const appUrl = getAppUrl();
-    const verificationUrl = `${appUrl}/verify-email?email=${encodeURIComponent(email)}`;
+    // Send verification email - wrapped in try-catch to prevent failure
+    try {
+      const appUrl = getAppUrl();
+      const verificationUrl = `${appUrl}/verify-email?email=${encodeURIComponent(email)}`;
 
-    const emailHtml = `
-      <p>Hi there,</p>
-      <p>Your Pulse verification code is:</p>
-      <h2 style="font-size: 24px; letter-spacing: 4px;">${otp}</h2>
-      <p>This code will expire in 10 minutes. Enter it in the app to verify your email.</p>
-      <p>If you did not create an account, you can ignore this email.</p>
-      <p>Or <a href="${verificationUrl}">open the verification screen</a>.</p>
-    `;
+      const emailHtml = `
+        <p>Hi there,</p>
+        <p>Your Pulse verification code is:</p>
+        <h2 style="font-size: 24px; letter-spacing: 4px;">${otp}</h2>
+        <p>This code will expire in 10 minutes. Enter it in the app to verify your email.</p>
+        <p>If you did not create an account, you can ignore this email.</p>
+        <p>Or <a href="${verificationUrl}">open the verification screen</a>.</p>
+      `;
 
-    await sendMail({
-      to: email,
-      subject: 'Verify your Pulse account',
-      html: emailHtml,
-      text: `Your Pulse verification code is ${otp}. It expires in 10 minutes.`,
-    });
+      await sendMail({
+        to: email,
+        subject: 'Verify your Pulse account',
+        html: emailHtml,
+        text: `Your Pulse verification code is ${otp}. It expires in 10 minutes.`,
+      });
 
-    logger.info('Verification OTP sent', { userId, email });
+      logger.info('Verification OTP sent', { userId, email });
+    } catch (emailError) {
+      logger.error('Failed to send verification email', {
+        userId,
+        email,
+        error: emailError instanceof Error ? emailError.message : String(emailError),
+      });
+      // Don't throw - token is created, user can try again
+    }
   }
 
   async resendVerification(input: ResendVerificationInput): Promise<{ message: string }> {
@@ -468,22 +503,33 @@ export class AuthService {
       },
     });
 
-    const emailHtml = `
-      <p>Hi ${user.name},</p>
-      <p>You requested to reset your Pulse password. Your reset code is:</p>
-      <h2 style="font-size: 24px; letter-spacing: 4px;">${otp}</h2>
-      <p>This code will expire in 10 minutes.</p>
-      <p>If you did not request a password reset, you can ignore this email.</p>
-    `;
+    // Send password reset email - wrapped in try-catch
+    try {
+      const emailHtml = `
+        <p>Hi ${user.name},</p>
+        <p>You requested to reset your Pulse password. Your reset code is:</p>
+        <h2 style="font-size: 24px; letter-spacing: 4px;">${otp}</h2>
+        <p>This code will expire in 10 minutes.</p>
+        <p>If you did not request a password reset, you can ignore this email.</p>
+      `;
 
-    await sendMail({
-      to: user.email,
-      subject: 'Reset your Pulse password',
-      html: emailHtml,
-      text: `Your Pulse password reset code is ${otp}. It expires in 10 minutes.`,
-    });
+      await sendMail({
+        to: user.email,
+        subject: 'Reset your Pulse password',
+        html: emailHtml,
+        text: `Your Pulse password reset code is ${otp}. It expires in 10 minutes.`,
+      });
 
-    logger.info('Password reset OTP sent', { userId: user.id, email: user.email });
+      logger.info('Password reset OTP sent', { userId: user.id, email: user.email });
+    } catch (emailError) {
+      logger.error('Failed to send password reset email', {
+        userId: user.id,
+        email: user.email,
+        error: emailError instanceof Error ? emailError.message : String(emailError),
+      });
+      // Don't throw - token is created, user can try resend
+    }
+    
     return { message: 'If the email exists, a password reset code has been sent' };
   }
 
