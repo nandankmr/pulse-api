@@ -370,9 +370,20 @@ export function createRealtimeServer(app: Application) {
         const sendResult = await messageService.sendMessage(sendOptions);
         const { message, conversationId: resolvedConversationId, participantIds } = sendResult;
 
+        // Enrich message with sender information
+        const sender = await prisma.user.findUnique({
+          where: { id: message.senderId },
+          select: { id: true, name: true, avatarUrl: true },
+        });
+
+        const enrichedMessage = {
+          ...message,
+          sender: sender ? { id: sender.id, name: sender.name, avatarUrl: sender.avatarUrl } : undefined,
+        };
+
         const deliveryPayload: Parameters<ServerToClientEvents['message:new']>[0] = payload.tempId !== undefined
-          ? { message, tempId: payload.tempId }
-          : { message };
+          ? { message: enrichedMessage as any, tempId: payload.tempId }
+          : { message: enrichedMessage as any };
 
         if (message.groupId) {
           socket.to(`group:${message.groupId}`).emit('message:new', deliveryPayload);
