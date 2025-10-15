@@ -5,6 +5,12 @@ export interface RealtimeConfig {
 
 function parseCorsOrigins(value: string | undefined): string | string[] {
   if (!value || value.trim() === '') {
+    // In production, allow all origins if not specified
+    // In development, use specific localhost origins
+    if (process.env.NODE_ENV === 'production') {
+      return '*'; // Allow all origins in production
+    }
+    
     // Default origins for development (includes Android emulator)
     return [
       'http://localhost:3000',
