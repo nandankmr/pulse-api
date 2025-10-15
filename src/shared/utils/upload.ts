@@ -1,4 +1,3 @@
-/// <reference types="multer" />
 import multer, { FileFilterCallback, StorageEngine } from 'multer';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -10,7 +9,7 @@ const storageConfig = getStorageConfig();
 
 export function createAvatarUploader() {
   const storage: StorageEngine = multer.diskStorage({
-    destination: (_req: Request, _file: Express.Multer.File, cb: (_error: Error | null, _destination: string) => void) => {
+    destination: (_req: Request, _file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
       try {
         ensureDirectoryExistsSync(storageConfig.avatarPath);
         cb(null, storageConfig.avatarPath);
@@ -18,7 +17,7 @@ export function createAvatarUploader() {
         cb(error as Error, storageConfig.avatarPath);
       }
     },
-    filename: (_req: Request, file: Express.Multer.File, cb: (_error: Error | null, _filename: string) => void) => {
+    filename: (_req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
       const ext = path.extname(file.originalname) || '.png';
       cb(null, `${randomUUID()}${ext}`);
     },
