@@ -1,14 +1,16 @@
-import multer from 'multer';
+/// <reference types="multer" />
+import multer, { FileFilterCallback, StorageEngine } from 'multer';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { Request } from 'express';
 import { ensureDirectoryExistsSync } from './storage';
 import { getStorageConfig } from '../../config/env.config';
 
 const storageConfig = getStorageConfig();
 
 export function createAvatarUploader() {
-  const storage = multer.diskStorage({
-    destination: (_req, _file, cb) => {
+  const storage: StorageEngine = multer.diskStorage({
+    destination: (_req: Request, _file: Express.Multer.File, cb: (_error: Error | null, _destination: string) => void) => {
       try {
         ensureDirectoryExistsSync(storageConfig.avatarPath);
         cb(null, storageConfig.avatarPath);
@@ -16,7 +18,7 @@ export function createAvatarUploader() {
         cb(error as Error, storageConfig.avatarPath);
       }
     },
-    filename: (_req, file, cb) => {
+    filename: (_req: Request, file: Express.Multer.File, cb: (_error: Error | null, _filename: string) => void) => {
       const ext = path.extname(file.originalname) || '.png';
       cb(null, `${randomUUID()}${ext}`);
     },
@@ -27,7 +29,7 @@ export function createAvatarUploader() {
     limits: {
       fileSize: 5 * 1024 * 1024, // 5MB
     },
-    fileFilter: (_req, file, cb) => {
+    fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
       if (!file.mimetype.startsWith('image/')) {
         return cb(new Error('Only image uploads are allowed'));
       }

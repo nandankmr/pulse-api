@@ -1,3 +1,4 @@
+/// <reference types="multer" />
 import { Request, Response, NextFunction } from 'express';
 import { verify, JwtPayload } from 'jsonwebtoken';
 import { getAuthConfig } from '../../config/env.config';
@@ -12,7 +13,6 @@ export interface AuthenticatedUser {
 
 export type AuthenticatedRequest = Request & {
   user?: AuthenticatedUser;
-  file?: Express.Multer.File;
 };
 
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {

@@ -1,3 +1,4 @@
+/// <reference types="nodemailer" />
 import nodemailer from 'nodemailer';
 import { getMailConfig } from '../../config/env.config';
 import { logger } from '../utils/logger';
