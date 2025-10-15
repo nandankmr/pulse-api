@@ -68,24 +68,106 @@ export class AuthService {
     }
 
     const hashedPassword = await hashPassword(input.password);
-    const user = await this.userRepository.save({
-      name: input.name,
-      email: input.email,
-      password: hashedPassword,
-    });
-
     const deviceContext = this.buildDeviceContext({
       deviceId: input.deviceId ?? null,
       deviceName: input.deviceName ?? null,
       platform: input.platform ?? null,
     });
-    await this.createVerificationToken(user.id, user.email);
 
-    const tokens = await this.issueTokens(user, deviceContext);
+    // Use transaction to ensure atomicity of user creation, verification token, and device session
+    const result = await prisma.$transaction(async (tx) => {
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          name: input.name,
+          email: input.email,
+          password: hashedPassword,
+        },
+      });
+
+      // Create verification token
+      const otp = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await tx.verificationToken.create({
+        data: {
+          userId: user.id,
+          token: otp,
+          type: 'EMAIL_VERIFICATION',
+          expiresAt,
+        },
+      });
+
+      // Create device session
+      const deviceId = deviceContext.deviceId ?? randomUUID();
+      const accessExpiresIn = this.parseExpiresIn(this.authConfig.accessTokenTtl);
+      const refreshExpiresIn = this.parseExpiresIn(this.authConfig.refreshTokenTtl);
+
+      const accessToken = sign(
+        {
+          sub: user.id,
+          email: user.email,
+        },
+        this.authConfig.secret,
+        { expiresIn: accessExpiresIn }
+      );
+
+      const refreshToken = sign(
+        {
+          sub: user.id,
+          type: 'refresh',
+          deviceId,
+        },
+        this.authConfig.secret,
+        { expiresIn: refreshExpiresIn }
+      );
+
+      const refreshTokenHash = await hashPassword(refreshToken);
+
+      await tx.deviceSession.create({
+        data: {
+          userId: user.id,
+          deviceId,
+          platform: deviceContext.platform ?? AuthService.DEFAULT_PLATFORM,
+          token: refreshTokenHash,
+        },
+      });
+
+      return {
+        user,
+        otp,
+        tokens: {
+          accessToken,
+          refreshToken,
+          deviceId,
+        },
+      };
+    });
+
+    // Send verification email outside transaction (non-critical operation)
+    const appUrl = getAppUrl();
+    const verificationUrl = `${appUrl}/verify-email?email=${encodeURIComponent(input.email)}`;
+
+    const emailHtml = `
+      <p>Hi there,</p>
+      <p>Your Pulse verification code is:</p>
+      <h2 style="font-size: 24px; letter-spacing: 4px;">${result.otp}</h2>
+      <p>This code will expire in 10 minutes. Enter it in the app to verify your email.</p>
+      <p>If you did not create an account, you can ignore this email.</p>
+      <p>Or <a href="${verificationUrl}">open the verification screen</a>.</p>
+    `;
+
+    await sendMail({
+      to: input.email,
+      subject: 'Verify your Pulse account',
+      html: emailHtml,
+      text: `Your Pulse verification code is ${result.otp}. It expires in 10 minutes.`,
+    });
+
+    logger.info('Verification OTP sent', { userId: result.user.id, email: input.email });
 
     return {
-      user: this.sanitizeUser(user),
-      tokens,
+      user: this.sanitizeUser(result.user),
+      tokens: result.tokens,
     };
   }
 
@@ -169,7 +251,7 @@ export class AuthService {
   }
 
   private sanitizeUser(user: User): Omit<User, 'password'> {
-    const { password, ...safeUser } = user;
+    const { password: _password, ...safeUser } = user;
     return safeUser;
   }
 
