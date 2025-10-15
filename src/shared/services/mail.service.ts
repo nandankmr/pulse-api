@@ -7,13 +7,15 @@ const mailConfig = getMailConfig();
 const transporter = nodemailer.createTransport({
   host: mailConfig.host,
   port: mailConfig.port,
-  secure: mailConfig.port === 465,
+  secure: mailConfig.port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
   auth: mailConfig.user
     ? {
         user: mailConfig.user,
         pass: mailConfig.password,
       }
     : undefined,
+  // Enable STARTTLS for port 587 (Gmail)
+  requireTLS: mailConfig.port === 587,
   // Add connection timeout and socket timeout to prevent hanging
   connectionTimeout: 30000, // 30 seconds
   greetingTimeout: 30000,   // 30 seconds
