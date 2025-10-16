@@ -17,6 +17,7 @@ import { prisma } from '../shared/services/prisma.service';
 export interface SocketAuthPayload {
   userId: string;
   email?: string;
+  name?: string;
 }
 
 export interface SendMessagePayload {
@@ -61,6 +62,7 @@ export interface TypingEventPayload {
 
 export interface OutgoingTypingPayload extends TypingEventPayload {
   userId: string;
+  userName?: string;
 }
 
 export interface GroupSubscriptionPayload {
@@ -235,6 +237,10 @@ function authenticateSocket(socket: Socket): SocketAuthPayload {
       payload.email = decoded.email;
     }
 
+    if ('name' in decoded && typeof decoded.name === 'string') {
+      payload.name = decoded.name;
+    }
+
     return payload;
   } catch (error) {
     throw new UnauthorizedError('Invalid or expired authentication token');
@@ -283,7 +289,7 @@ export function createRealtimeServer(app: Application) {
     }
   });
 
-  io.on('connection', (socket: AuthedSocket) => {
+  io.on('connection', async (socket: AuthedSocket) => {
     const user = socket.data.user;
     if (!user) {
       logger.warn('Socket connected without authenticated user context', { socketId: socket.id });
@@ -294,6 +300,31 @@ export function createRealtimeServer(app: Application) {
     logger.info('Socket connected', { userId: user.userId, socketId: socket.id });
 
     socket.join(`user:${user.userId}`);
+
+    // Auto-join all user's groups
+    try {
+      const userGroups = await prisma.groupMember.findMany({
+        where: { userId: user.userId },
+        select: { groupId: true },
+      });
+      
+      for (const { groupId } of userGroups) {
+        socket.join(`group:${groupId}`);
+      }
+      
+      if (userGroups.length > 0) {
+        logger.info('Socket auto-joined user groups', { 
+          userId: user.userId, 
+          groupCount: userGroups.length,
+          groupIds: userGroups.map(g => g.groupId),
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to auto-join user groups', { 
+        userId: user.userId, 
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     const becameOnline = markUserOnline(user.userId, socket.id);
     if (becameOnline) {
@@ -385,12 +416,22 @@ export function createRealtimeServer(app: Application) {
           ? { message: enrichedMessage as any, tempId: payload.tempId }
           : { message: enrichedMessage as any };
 
+        // Automatically send typing:stop when message is sent
+        const typingStopPayload: OutgoingTypingPayload = {
+          userId: user.userId,
+          userName: user.name || 'Unknown',
+        };
+
         if (message.groupId) {
           socket.to(`group:${message.groupId}`).emit('message:new', deliveryPayload);
           socket.emit('message:new', deliveryPayload);
+          // Stop typing indicator for group
+          socket.to(`group:${message.groupId}`).emit('typing:stop', { ...typingStopPayload, groupId: message.groupId });
         } else if (message.receiverId) {
           io.to(`user:${message.receiverId}`).emit('message:new', deliveryPayload);
           socket.emit('message:new', deliveryPayload);
+          // Stop typing indicator for DM
+          io.to(`user:${message.receiverId}`).emit('typing:stop', { ...typingStopPayload, targetUserId: message.receiverId });
         }
 
         const successAck: MessageDeliveryAck = {
@@ -506,6 +547,7 @@ export function createRealtimeServer(app: Application) {
       const typingPayload: OutgoingTypingPayload = {
         ...payload,
         userId: user.userId,
+        ...(user.name && { userName: user.name }),
       };
 
       if (payload.groupId) {
@@ -522,6 +564,7 @@ export function createRealtimeServer(app: Application) {
       const typingPayload: OutgoingTypingPayload = {
         ...payload,
         userId: user.userId,
+        ...(user.name && { userName: user.name }),
       };
 
       if (payload.groupId) {

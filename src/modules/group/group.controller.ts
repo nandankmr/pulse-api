@@ -14,6 +14,7 @@ import {
 import { ValidationError, UnauthorizedError } from '../../shared/errors/app.errors';
 import { logger } from '../../shared/utils/logger';
 import type { AuthenticatedRequest } from '../../shared/middleware/auth.middleware';
+import { io } from '../../index';
 
 const groupService = new GroupService();
 
@@ -37,7 +38,6 @@ export class GroupController {
         ...(payload.description !== undefined ? { description: payload.description } : {}),
         ...(payload.avatarUrl !== undefined ? { avatarUrl: payload.avatarUrl } : {}),
       });
-      logger.info('Group created via API', { groupId: group.id, ownerId });
       res.status(201).json(group);
     } catch (error) {
       this.handleControllerError('create group', req, error);
@@ -53,7 +53,6 @@ export class GroupController {
       }
 
       const groups = await groupService.listUserGroups(userId);
-      logger.info('Groups listed via API', { userId, count: groups.length });
       res.json({ data: groups });
     } catch (error) {
       this.handleControllerError('list groups', req, error);
@@ -70,7 +69,6 @@ export class GroupController {
 
       const { groupId } = groupIdParamSchema.parse(req.params);
       const group = await groupService.getGroupById(groupId, requesterId);
-      logger.info('Group retrieved via API', { groupId, requesterId });
       res.json(group);
     } catch (error) {
       this.handleControllerError('get group', req, error);
@@ -93,7 +91,20 @@ export class GroupController {
         ...(payload.avatarUrl !== undefined ? { avatarUrl: payload.avatarUrl } : {}),
       };
       const group = await groupService.updateGroup(groupId, requesterId, normalizedPayload);
-      logger.info('Group updated via API', { groupId, requesterId });
+      
+      // Broadcast group update via Socket.IO
+      if (io) {
+        const updatePayload: any = {
+          groupId,
+          updatedBy: requesterId,
+        };
+        if (normalizedPayload.name !== undefined) updatePayload.name = normalizedPayload.name;
+        if (normalizedPayload.description !== undefined) updatePayload.description = normalizedPayload.description;
+        if (normalizedPayload.avatarUrl !== undefined) updatePayload.avatarUrl = normalizedPayload.avatarUrl;
+        
+        io.to(`group:${groupId}`).emit('group:updated', updatePayload);
+      }
+      
       res.json(group);
     } catch (error) {
       this.handleControllerError('update group', req, error);
@@ -110,7 +121,6 @@ export class GroupController {
 
       const { groupId } = groupIdParamSchema.parse(req.params);
       await groupService.deleteGroup(groupId, requesterId);
-      logger.info('Group deleted via API', { groupId, requesterId });
       res.status(204).send();
     } catch (error) {
       this.handleControllerError('delete group', req, error);
@@ -128,7 +138,18 @@ export class GroupController {
       const { groupId } = groupIdParamSchema.parse(req.params);
       const payload = addMemberSchema.parse(req.body);
       const group = await groupService.addMember(groupId, requesterId, payload.userId, payload.role);
-      logger.info('Member added via API', { groupId, requesterId, userId: payload.userId });
+      
+      // Broadcast member added via Socket.IO
+      if (io) {
+        const memberPayload = {
+          groupId,
+          userId: payload.userId,
+          addedBy: requesterId,
+          role: payload.role || 'MEMBER',
+        };
+        io.to(`group:${groupId}`).emit('group:member:added', memberPayload);
+      }
+      
       res.status(201).json(group);
     } catch (error) {
       this.handleControllerError('add group member', req, error);
@@ -146,7 +167,17 @@ export class GroupController {
       const { groupId, userId } = groupMemberParamSchema.parse(req.params);
       const payload = updateMemberRoleSchema.parse(req.body);
       const group = await groupService.updateMemberRole(groupId, requesterId, userId, payload.role);
-      logger.info('Member role updated via API', { groupId, requesterId, userId, role: payload.role });
+      
+      // Broadcast role change via Socket.IO
+      if (io) {
+        const rolePayload = {
+          groupId,
+          userId,
+          role: payload.role,
+        };
+        io.to(`group:${groupId}`).emit('group:member:role_changed', rolePayload);
+      }
+      
       res.json(group);
     } catch (error) {
       this.handleControllerError('update group member role', req, error);
@@ -163,7 +194,17 @@ export class GroupController {
 
       const { groupId, userId } = groupMemberParamSchema.parse(req.params);
       const group = await groupService.removeMember(groupId, requesterId, userId);
-      logger.info('Member removed via API', { groupId, requesterId, userId });
+
+      // Broadcast member removed via Socket.IO
+      if (io) {
+        const memberPayload = {
+          groupId,
+          userId,
+          removedBy: requesterId,
+        };
+        io.to(`group:${groupId}`).emit('group:member:removed', memberPayload);
+      }
+
       res.json(group);
     } catch (error) {
       this.handleControllerError('remove group member', req, error);
@@ -184,7 +225,6 @@ export class GroupController {
         email: payload.email,
         expiresInHours: payload.expiresInHours,
       });
-      logger.info('Group invitation created via API', { groupId, requesterId, invitationId: invitation.id });
       res.status(201).json(invitation);
     } catch (error) {
       this.handleControllerError('create group invitation', req, error);

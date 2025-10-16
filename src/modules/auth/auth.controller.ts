@@ -18,7 +18,6 @@ export class AuthController {
     try {
       const parsedBody = registerSchema.parse(req.body);
       const result = await authService.register(parsedBody);
-      logger.info('User registered successfully via API', { userId: result.user.id, userEmail: result.user.email });
       res.status(201).json(result);
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -35,7 +34,6 @@ export class AuthController {
     try {
       const parsedBody = loginSchema.parse(req.body);
       const result = await authService.login(parsedBody);
-      logger.info('User logged in successfully via API', { userId: result.user.id, userEmail: result.user.email });
       res.json(result);
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -52,7 +50,6 @@ export class AuthController {
     try {
       const parsedBody = refreshSchema.parse(req.body);
       const result = await authService.refresh(parsedBody);
-      logger.info('Token refreshed successfully via API', { userId: result.user.id, deviceId: result.tokens.deviceId });
       res.json(result);
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -69,7 +66,6 @@ export class AuthController {
     try {
       const parsedBody = verifyEmailSchema.parse(req.body);
       const user = await authService.verifyEmail(parsedBody);
-      logger.info('User email verified via API', { userId: user.id, userEmail: user.email });
       res.json({ user });
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -86,7 +82,6 @@ export class AuthController {
     try {
       const parsedBody = resendVerificationSchema.parse(req.body);
       const result = await authService.resendVerification(parsedBody);
-      logger.info('Verification code resent via API', { email: parsedBody.email });
       res.json(result);
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -103,7 +98,6 @@ export class AuthController {
     try {
       const parsedBody = logoutSchema.parse(req.body);
       const result = await authService.logout(parsedBody);
-      logger.info('User logged out via API', { deviceId: parsedBody.deviceId });
       res.json(result);
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -120,7 +114,6 @@ export class AuthController {
     try {
       const parsedBody = forgotPasswordSchema.parse(req.body);
       const result = await authService.forgotPassword(parsedBody);
-      logger.info('Password reset requested via API', { email: parsedBody.email });
       res.json(result);
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -137,7 +130,6 @@ export class AuthController {
     try {
       const parsedBody = resetPasswordSchema.parse(req.body);
       const result = await authService.resetPassword(parsedBody);
-      logger.info('Password reset via API', { email: parsedBody.email });
       res.json(result);
     } catch (error) {
       if (error instanceof ValidationError) {
@@ -160,7 +152,6 @@ export class AuthController {
 
       const parsedBody = changePasswordSchema.parse(req.body);
       const result = await authService.changePassword(userId, parsedBody);
-      logger.info('Password changed via API', { userId });
       res.json(result);
     } catch (error) {
       if (error instanceof ValidationError || error instanceof UnauthorizedError) {

@@ -83,7 +83,6 @@ export class UserController {
 
       const { name, password } = req.body;
       const updatedUser = await userService.updateProfile(userId, { name, password });
-      logger.info('User profile updated via API', { userId });
       res.json(updatedUser);
     } catch (error) {
       logger.error('Error updating user profile', {
@@ -111,7 +110,6 @@ export class UserController {
       const relativePath = path.relative(process.cwd(), file.path);
       const normalizedPath = `/${relativePath.split(path.sep).join('/')}`;
       const updatedUser = await userService.updateAvatar(userId, normalizedPath);
-      logger.info('User avatar uploaded via API', { userId, avatarPath: normalizedPath });
       res.json(updatedUser);
     } catch (error) {
       logger.error('Error uploading user avatar', {
@@ -132,7 +130,6 @@ export class UserController {
 
       const limit = req.query.limit ? Number(req.query.limit) : 20;
       const users = await userService.searchUsers(query, limit);
-      logger.info('User search completed via API', { query, limit, count: users.length });
       res.json({ data: users });
     } catch (error) {
       logger.error('Error searching users', {
@@ -156,7 +153,6 @@ export class UserController {
       if (!user) {
         throw new NotFoundError('User');
       }
-      logger.info('Current user profile retrieved via API', { userId });
       res.json(user);
     } catch (error) {
       logger.error('Error getting current user', {

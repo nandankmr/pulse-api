@@ -106,6 +106,7 @@ export class AuthService {
         {
           sub: user.id,
           email: user.email,
+          name: user.name,
         },
         this.authConfig.secret,
         { expiresIn: accessExpiresIn }
@@ -325,6 +326,7 @@ export class AuthService {
       {
         sub: user.id,
         email: user.email,
+        name: user.name,
       },
       this.authConfig.secret,
       { expiresIn: accessExpiresIn }
