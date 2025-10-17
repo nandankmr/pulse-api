@@ -12,6 +12,8 @@ import { logger } from '../shared/utils/logger';
 import { Message, MessageType } from '../generated/prisma';
 import { MessageService } from '../modules/message/message.service';
 import type { SendMessageOptions } from '../modules/message/message.service';
+import { presentMessage } from '../modules/message/message.presenter';
+import type { EnrichedMessagePayload } from '../modules/message/message.presenter';
 import { prisma } from '../shared/services/prisma.service';
 
 export interface SocketAuthPayload {
@@ -128,31 +130,31 @@ export interface GroupUpdatedPayload {
 }
 
 export interface ServerToClientEvents {
-  'message:new': (payload: { message: Message; tempId?: string }) => void;
-  'message:read': (payload: OutgoingMessageReadPayload) => void;
-  'message:delivered': (payload: MessageDeliveredPayload) => void;
-  'message:read:confirmed': (payload: MessageReadConfirmedPayload) => void;
-  'message:edited': (payload: MessageEditedPayload) => void;
-  'message:deleted': (payload: MessageDeletedPayload) => void;
-  'group:member:added': (payload: GroupMemberEventPayload) => void;
-  'group:member:removed': (payload: GroupMemberEventPayload) => void;
-  'group:member:role_changed': (payload: GroupMemberEventPayload) => void;
-  'group:updated': (payload: GroupUpdatedPayload) => void;
-  'presence:update': (payload: { userId: string; status: 'online' | 'offline' }) => void;
-  'presence:state': (payload: { onlineUserIds: string[] }) => void;
-  'typing:start': (payload: OutgoingTypingPayload) => void;
-  'typing:stop': (payload: OutgoingTypingPayload) => void;
+  'message:new': (_payload: { message: Message | EnrichedMessagePayload; tempId?: string }) => void;
+  'message:read': (_payload: OutgoingMessageReadPayload) => void;
+  'message:delivered': (_payload: MessageDeliveredPayload) => void;
+  'message:read:confirmed': (_payload: MessageReadConfirmedPayload) => void;
+  'message:edited': (_payload: MessageEditedPayload) => void;
+  'message:deleted': (_payload: MessageDeletedPayload) => void;
+  'group:member:added': (_payload: GroupMemberEventPayload) => void;
+  'group:member:removed': (_payload: GroupMemberEventPayload) => void;
+  'group:member:role_changed': (_payload: GroupMemberEventPayload) => void;
+  'group:updated': (_payload: GroupUpdatedPayload) => void;
+  'presence:update': (_payload: { userId: string; status: 'online' | 'offline' }) => void;
+  'presence:state': (_payload: { onlineUserIds: string[] }) => void;
+  'typing:start': (_payload: OutgoingTypingPayload) => void;
+  'typing:stop': (_payload: OutgoingTypingPayload) => void;
 }
 
 export interface ClientToServerEvents {
-  'message:send': (payload: SendMessagePayload, callback: (ack: MessageDeliveryAck) => void) => void;
-  'message:read': (payload: MessageReadPayload) => void;
-  'message:edit': (payload: MessageEditPayload) => void;
-  'message:delete': (payload: MessageDeletePayload) => void;
-  'typing:start': (payload: TypingEventPayload) => void;
-  'typing:stop': (payload: TypingEventPayload) => void;
-  'group:join': (payload: GroupSubscriptionPayload) => void;
-  'group:leave': (payload: GroupSubscriptionPayload) => void;
+  'message:send': (_payload: SendMessagePayload, _callback: (ack: MessageDeliveryAck) => void) => void;
+  'message:read': (_payload: MessageReadPayload) => void;
+  'message:edit': (_payload: MessageEditPayload) => void;
+  'message:delete': (_payload: MessageDeletePayload) => void;
+  'typing:start': (_payload: TypingEventPayload) => void;
+  'typing:stop': (_payload: TypingEventPayload) => void;
+  'group:join': (_payload: GroupSubscriptionPayload) => void;
+  'group:leave': (_payload: GroupSubscriptionPayload) => void;
   'presence:subscribe': () => void;
 }
 
@@ -407,14 +409,20 @@ export function createRealtimeServer(app: Application) {
           select: { id: true, name: true, avatarUrl: true },
         });
 
-        const enrichedMessage = {
-          ...message,
-          sender: sender ? { id: sender.id, name: sender.name, avatarUrl: sender.avatarUrl } : undefined,
-        };
+        const chatId = message.groupId ?? sendResult.conversationId ?? message.conversationId;
+
+        const enrichedMessage = presentMessage({
+          message,
+          sender: sender ? { id: sender.id, name: sender.name, avatarUrl: sender.avatarUrl } : null,
+          receipts: sendResult.receipts,
+          participantIds,
+          currentUserId: user.userId,
+          chatId: chatId ?? message.id,
+        });
 
         const deliveryPayload: Parameters<ServerToClientEvents['message:new']>[0] = payload.tempId !== undefined
-          ? { message: enrichedMessage as any, tempId: payload.tempId }
-          : { message: enrichedMessage as any };
+          ? { message: enrichedMessage, tempId: payload.tempId }
+          : { message: enrichedMessage };
 
         // Automatically send typing:stop when message is sent
         const typingStopPayload: OutgoingTypingPayload = {

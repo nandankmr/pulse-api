@@ -6,11 +6,13 @@ import authRoutes from './modules/auth/auth.routes';
 import groupRoutes from './modules/group/group.routes';
 import chatRoutes from './modules/chat/chat.routes';
 import attachmentRoutes from './modules/attachment/attachment.routes';
+import pushRoutes from './modules/push/push.routes';
 import { legacyConfig } from './config/app.config';
 import { errorHandler } from './shared/middleware/error.middleware';
 import { setupSwagger } from './config/swagger.config';
 import { getStorageConfig } from './config/env.config';
 import { createRealtimeServer } from './realtime/socket.server';
+import { prisma } from './shared/services/prisma.service';
 
 const app = express();
 
@@ -33,18 +35,18 @@ app.use(express.json());
 
 // Temporary: Log all incoming requests
 app.use((req, res, next) => {
-  console.log('\n🔵 INCOMING REQUEST:', {
-    method: req.method,
-    url: req.url,
-    path: req.path,
-    params: req.params,
-    query: req.query,
-    body: req.body,
-    headers: {
-      authorization: req.headers.authorization ? 'Bearer ***' : 'none',
-      contentType: req.headers['content-type'],
-    },
-  });
+  // console.log('\n🔵 INCOMING REQUEST:', {
+  //   method: req.method,
+  //   url: req.url,
+  //   path: req.path,
+  //   params: req.params,
+  //   query: req.query,
+  //   body: req.body,
+  //   headers: {
+  //     authorization: req.headers.authorization ? 'Bearer ***' : 'none',
+  //     contentType: req.headers['content-type'],
+  //   },
+  // });
   next();
 });
 
@@ -65,6 +67,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/attachments', attachmentRoutes);
+app.use('/api/push', pushRoutes);
 
 const storageConfig = getStorageConfig();
 const avatarsAbsolutePath = path.resolve(storageConfig.avatarPath);
@@ -74,13 +77,25 @@ app.use(errorHandler);
 
 const { httpServer, io } = createRealtimeServer(app);
 
-// Listen on all network interfaces (0.0.0.0) to allow Android emulator access
-httpServer.listen(legacyConfig.port, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${legacyConfig.port}`);
-  console.log(`📚 API Documentation: http://localhost:${legacyConfig.port}/api-docs`);
-  console.log(`🔌 Socket.IO ready on /socket.io`);
-  console.log(`📱 Android Emulator: Use http://10.0.2.2:${legacyConfig.port}`);
-  console.log(`📱 Physical Device: Use http://<your-local-ip>:${legacyConfig.port}`);
-});
+async function startServer() {
+  try {
+    await prisma.$connect();
+    console.log('🟢 Database connection established');
+  } catch (error) {
+    console.error('🔴 Failed to connect to the database', error);
+    process.exit(1);
+  }
+
+  // Listen on all network interfaces (0.0.0.0) to allow Android emulator access
+  httpServer.listen(legacyConfig.port, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${legacyConfig.port}`);
+    console.log(`📚 API Documentation: http://localhost:${legacyConfig.port}/api-docs`);
+    console.log(`🔌 Socket.IO ready on /socket.io`);
+    console.log(`📱 Android Emulator: Use http://10.0.2.2:${legacyConfig.port}`);
+    console.log(`📱 Physical Device: Use http://<your-local-ip>:${legacyConfig.port}`);
+  });
+}
+
+startServer();
 
 export { io };

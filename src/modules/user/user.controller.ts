@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
-import path from 'path';
-import { UserService } from './user.service';
-import { NotFoundError, ValidationError, UnauthorizedError } from '../../shared/errors/app.errors';
-import { logger } from '../../shared/utils/logger';
-import { PaginationOptions } from '../../shared/utils/pagination';
+import { ValidationError, UnauthorizedError, NotFoundError } from '../../shared/errors/app.errors';
 import type { AuthenticatedRequest } from '../../shared/middleware/auth.middleware';
+import { logger } from '../../shared/utils/logger';
+import { buildAttachmentUrl } from '../../config/env.config';
+import type { PaginationOptions } from '../../shared/utils/pagination';
+import { UserService } from './user.service';
 
 const userService = new UserService();
 
@@ -102,14 +102,22 @@ export class UserController {
         throw new UnauthorizedError('User authentication required');
       }
 
-      const file = authReq.file;
-      if (!file) {
-        throw new ValidationError('Avatar file is required');
+      const body = req.body as { filename?: unknown; url?: unknown };
+      let filename: string | undefined;
+
+      if (typeof body.filename === 'string' && body.filename.trim()) {
+        filename = body.filename.trim();
+      } else if (typeof body.url === 'string' && body.url.trim()) {
+        const segments = body.url.trim().split('/');
+        filename = segments.pop() || undefined;
       }
 
-      const relativePath = path.relative(process.cwd(), file.path);
-      const normalizedPath = `/${relativePath.split(path.sep).join('/')}`;
-      const updatedUser = await userService.updateAvatar(userId, normalizedPath);
+      if (!filename) {
+        throw new ValidationError('Attachment filename or url is required');
+      }
+
+      const publicUrl = buildAttachmentUrl(filename);
+      const updatedUser = await userService.updateAvatar(userId, publicUrl);
       res.json(updatedUser);
     } catch (error) {
       logger.error('Error uploading user avatar', {

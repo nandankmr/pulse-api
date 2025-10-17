@@ -1,10 +1,10 @@
 // Environment configuration without zod for now
 // TODO: Install zod and uncomment the proper validation
 // import { z } from 'zod';
-// import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 
 // Load environment variables from .env file
-// dotenv.config();
+dotenv.config();
 
 // Type definitions for environment variables
 export interface EnvironmentConfig {
@@ -22,11 +22,15 @@ export interface EnvironmentConfig {
   MAIL_FROM: string;
   APP_URL: string;
   USER_AVATAR_STORAGE_PATH: string;
+  ATTACHMENT_BASE_PATH: string;
   SENTRY_DSN?: string;
   NEW_RELIC_LICENSE_KEY?: string;
   API_VERSION: string;
   API_PREFIX: string;
   CACHE_TTL: number;
+  FIREBASE_PROJECT_ID?: string;
+  FIREBASE_CLIENT_EMAIL?: string;
+  FIREBASE_PRIVATE_KEY?: string;
 }
 
 /**
@@ -42,6 +46,10 @@ function getEnvVar(key: keyof EnvironmentConfig, defaultValue: string, converter
  */
 function validateEnvironment(): EnvironmentConfig {
   try {
+    const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
+    const firebaseClientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const firebasePrivateKey = process.env.FIREBASE_PRIVATE_KEY;
+
     const config: EnvironmentConfig = {
       NODE_ENV: getEnvVar('NODE_ENV', 'development') as EnvironmentConfig['NODE_ENV'],
       PORT: getEnvVar('PORT', '3000', Number),
@@ -57,18 +65,25 @@ function validateEnvironment(): EnvironmentConfig {
       MAIL_FROM: getEnvVar('MAIL_FROM', 'noreply@pulse-api.com'),
       APP_URL: getEnvVar('APP_URL', 'http://localhost:3000'),
       USER_AVATAR_STORAGE_PATH: getEnvVar('USER_AVATAR_STORAGE_PATH', './storage/avatars'),
+      ATTACHMENT_BASE_PATH: getEnvVar('ATTACHMENT_BASE_PATH', '/api/attachments'),
       API_VERSION: getEnvVar('API_VERSION', 'v1'),
       API_PREFIX: getEnvVar('API_PREFIX', '/api'),
       CACHE_TTL: getEnvVar('CACHE_TTL', '300', Number),
+      ...(firebaseProjectId ? { FIREBASE_PROJECT_ID: firebaseProjectId } : {}),
+      ...(firebaseClientEmail ? { FIREBASE_CLIENT_EMAIL: firebaseClientEmail } : {}),
+      ...(firebasePrivateKey ? { FIREBASE_PRIVATE_KEY: firebasePrivateKey } : {}),
     };
 
     // Basic validation
     if (config.JWT_SECRET.length < 32) {
       throw new Error('JWT_SECRET must be at least 32 characters long');
     }
-    console.log(config.DATABASE_URL);
     if (!config.DATABASE_URL.startsWith('file:') && !config.DATABASE_URL.startsWith('postgres:')) {
       throw new Error('DATABASE_URL must be a valid SQLite file path or PostgreSQL connection string');
+    }
+
+    if ((config.FIREBASE_PROJECT_ID || config.FIREBASE_CLIENT_EMAIL || config.FIREBASE_PRIVATE_KEY) && (!config.FIREBASE_PROJECT_ID || !config.FIREBASE_CLIENT_EMAIL || !config.FIREBASE_PRIVATE_KEY)) {
+      console.warn('Incomplete Firebase configuration detected. Push notifications will be disabled.');
     }
 
     return config;
@@ -138,6 +153,35 @@ export function getStorageConfig() {
   };
 }
 
+export function buildAvatarUrl(relativePath: string): string {
+  if (!relativePath) {
+    return relativePath;
+  }
+
+  if (/^https?:\/\//i.test(relativePath)) {
+    return relativePath;
+  }
+
+  const normalizedPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+  const baseUrl = config.APP_URL.replace(/\/$/, '');
+  return `${baseUrl}${normalizedPath}`;
+}
+
+export function buildAttachmentUrl(filename: string): string {
+  if (!filename) {
+    return filename;
+  }
+
+  if (/^http?:\/\//i.test(filename)) {
+    return filename;
+  }
+
+  const baseUrl = config.APP_URL.replace(/\/$/, '');
+  const basePath = config.ATTACHMENT_BASE_PATH.replace(/\/$/, '');
+  const normalizedFilename = filename.startsWith('/') ? filename.slice(1) : filename;
+  return `${baseUrl}${basePath}/${normalizedFilename}`;
+}
+
 /**
  * Get logging configuration
  */
@@ -154,6 +198,18 @@ export function getLoggingConfig() {
 export function getCacheConfig() {
   return {
     ttl: config.CACHE_TTL,
+  };
+}
+
+export function getFirebaseConfig() {
+  if (!config.FIREBASE_PROJECT_ID || !config.FIREBASE_CLIENT_EMAIL || !config.FIREBASE_PRIVATE_KEY) {
+    return null;
+  }
+
+  return {
+    projectId: config.FIREBASE_PROJECT_ID,
+    clientEmail: config.FIREBASE_CLIENT_EMAIL,
+    privateKey: config.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   };
 }
 

@@ -1,6 +1,7 @@
 import type { Message } from '../../generated/prisma';
 import { MessageRepository, MessageReceipt, MessageReceiptStatus, SendMessageData } from './message.repository';
 import { GroupRepository } from '../group/group.repository';
+import { PushService } from '../push/push.service';
 import { logger } from '../../shared/utils/logger';
 
 export interface SendMessageOptions extends SendMessageData {}
@@ -21,6 +22,7 @@ export interface MarkReadResult {
 export class MessageService {
   private readonly messageRepository = new MessageRepository();
   private readonly groupRepository = new GroupRepository();
+  private readonly pushService = new PushService();
 
   async sendMessage(options: SendMessageOptions): Promise<SendMessageResult> {
     if (!options.receiverId && !options.groupId) {
@@ -65,6 +67,30 @@ export class MessageService {
 
     const participantIds = await this.collectParticipantIds(message);
     const receipts = await this.messageRepository.markDeliveredForParticipants(message.id, participantIds);
+
+    let chatName: string | undefined;
+    if (message.groupId) {
+      try {
+        const group = await this.groupRepository.findById(message.groupId);
+        chatName = group?.name ?? undefined;
+      } catch (error) {
+        logger.warn('Failed to resolve group name for push notification', {
+          messageId: message.id,
+          groupId: message.groupId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const notificationPayload = {
+      senderId: options.senderId,
+      recipientIds: participantIds,
+      message,
+      conversationId: message.conversationId ?? resolvedConversationId ?? null,
+      ...(chatName ? { chatName } : {}),
+    } as Parameters<PushService['notifyNewMessage']>[0];
+
+    void this.pushService.notifyNewMessage(notificationPayload);
 
     return {
       message,

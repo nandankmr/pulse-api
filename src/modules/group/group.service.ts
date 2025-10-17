@@ -3,6 +3,7 @@ import { Group, GroupMember, GroupRole } from '../../generated/prisma';
 import { GroupRepository, GroupInvitationRecord } from './group.repository';
 import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../../shared/errors/app.errors';
 import { logger } from '../../shared/utils/logger';
+import { buildAvatarUrl } from '../../config/env.config';
 
 export type GroupWithMembers = Group & { members: GroupMember[] };
 
@@ -11,7 +12,7 @@ function sanitizeGroup(group: GroupWithMembers) {
     id: group.id,
     name: group.name,
     description: group.description,
-    avatarUrl: group.avatarUrl,
+    avatarUrl: group.avatarUrl ? buildAvatarUrl(group.avatarUrl) : group.avatarUrl,
     createdBy: group.createdBy,
     createdAt: group.createdAt,
     updatedAt: group.updatedAt,

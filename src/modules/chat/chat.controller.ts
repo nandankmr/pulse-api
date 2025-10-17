@@ -9,6 +9,8 @@ import type { AuthenticatedRequest } from '../../shared/middleware/auth.middlewa
 import { io } from '../../index';
 import { prisma } from '../../shared/services/prisma.service';
 import { MessageType } from '../../generated/prisma';
+import { presentMessage } from '../message/message.presenter';
+import type { EnrichedMessagePayload } from '../message/message.presenter';
 
 const chatService = new ChatService();
 const messageService = new MessageService();
@@ -388,21 +390,22 @@ export class ChatController {
       const group = await prisma.group.findUnique({
         where: { id: chatId },
         include: {
-          members: {
-            where: { userId },
-          },
+          members: true,
         },
       });
 
       let conversationId: string | undefined;
       let groupId: string | undefined;
+      let participantIds: string[] = [];
 
       if (group) {
         // Verify user is a member
-        if (group.members.length === 0) {
+        const isMember = group.members.some((member) => member.userId === userId);
+        if (!isMember) {
           throw new UnauthorizedError('You are not a member of this group');
         }
         groupId = chatId;
+        participantIds = Array.from(new Set(group.members.map((member) => member.userId)));
       } else {
         // It's a DM - verify user is part of conversation
         const conversation = await prisma.directConversation.findUnique({
@@ -418,6 +421,7 @@ export class ChatController {
         }
 
         conversationId = chatId;
+        participantIds = Array.from(new Set([conversation.userAId, conversation.userBId]));
       }
 
       // Fetch messages with pagination
@@ -457,44 +461,25 @@ export class ChatController {
               avatarUrl: true,
             },
           },
+          receipts: true,
         },
       });
 
       // Format messages for frontend
-      const formattedMessages = messages.reverse().map((msg) => {
-        // Convert location from JSON to attachment format
-        const locationAttachment = msg.location ? [{
-          id: `loc_${msg.id}`,
-          type: 'location' as const,
-          url: '',
-          latitude: (msg.location as any).latitude,
-          longitude: (msg.location as any).longitude,
-        }] : [];
-
-        // Convert mediaUrl to attachment format
-        const mediaAttachment = msg.mediaUrl ? [{
-          id: `media_${msg.id}`,
-          type: msg.type.toLowerCase() as any,
-          url: msg.mediaUrl,
-          name: `${msg.type.toLowerCase()}_${msg.id}`,
-        }] : [];
-
-        return {
-          id: msg.id,
-          chatId: chatId,
-          senderId: msg.senderId,
-          senderName: msg.sender?.name || 'Unknown',
-          senderAvatar: msg.sender?.avatarUrl || null,
-          content: msg.content || '',
-          timestamp: msg.createdAt.toISOString(),
-          isRead: false, // TODO: Check message receipts
-          isSent: true,
-          attachments: [...mediaAttachment, ...locationAttachment],
-          replyTo: null,
-          editedAt: msg.editedAt?.toISOString() || null,
-          deletedAt: msg.deletedAt?.toISOString() || null,
-        };
-      });
+      const formattedMessages = messages
+        .reverse()
+        .map((msg) =>
+          presentMessage({
+            message: msg,
+            sender: msg.sender
+              ? { id: msg.sender.id, name: msg.sender.name, avatarUrl: msg.sender.avatarUrl }
+              : null,
+            receipts: msg.receipts,
+            participantIds,
+            currentUserId: userId,
+            chatId,
+          })
+        );
 
       const hasMore = messages.length === limitNum;
       const nextCursor = hasMore && messages.length > 0 ? messages[0]?.id : undefined;
@@ -605,44 +590,29 @@ export class ChatController {
       // Get sender details
       const sender = await userRepository.findById(userId);
 
-      // Convert location from JSON to attachment format for frontend
-      const locationAttachment = result.message.location ? [{
-        id: `loc_${result.message.id}`,
-        type: 'location' as const,
-        url: '',
-        latitude: (result.message.location as any).latitude,
-        longitude: (result.message.location as any).longitude,
-      }] : [];
-
-      // Convert mediaUrl to attachment format for frontend
-      const mediaAttachment = result.message.mediaUrl ? [{
-        id: `media_${result.message.id}`,
-        type: result.message.type.toLowerCase() as any,
-        url: result.message.mediaUrl,
-        name: `${result.message.type.toLowerCase()}_${result.message.id}`,
-      }] : [];
-
       // Prepare response matching frontend expectations
-      const messageResponse = {
-        id: result.message.id,
-        chatId: chatId,
-        senderId: userId,
-        senderName: sender?.name || 'Unknown User',
-        senderAvatar: sender?.avatarUrl || null,
-        content: result.message.content,
-        timestamp: result.message.createdAt.toISOString(),
-        isRead: false,
-        isSent: true,
-        attachments: [...mediaAttachment, ...locationAttachment],
-        replyTo: null,
-      };
+      const messageResponse: EnrichedMessagePayload = presentMessage({
+        message: result.message,
+        sender: sender
+          ? { id: sender.id, name: sender.name, avatarUrl: sender.avatarUrl }
+          : null,
+        receipts: result.receipts,
+        participantIds: result.participantIds,
+        currentUserId: userId,
+        chatId,
+      });
 
       // Broadcast to all chat participants via Socket.IO
       if (io) {
-        const socketPayload = {
+        type MessageNewPayload = {
+          message: EnrichedMessagePayload;
+          tempId?: string;
+        };
+
+        const socketPayload: MessageNewPayload = {
           message: messageResponse,
-          tempId: req.body.tempId, // Support for optimistic updates
-        } as any; // Type assertion for Socket.IO payload
+          tempId: typeof req.body.tempId === 'string' ? req.body.tempId : undefined,
+        };
 
         if (group) {
           // For groups, broadcast to group room
