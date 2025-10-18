@@ -153,26 +153,12 @@ export function getStorageConfig() {
   };
 }
 
-export function buildAvatarUrl(relativePath: string): string {
-  if (!relativePath) {
-    return relativePath;
-  }
-
-  if (/^https?:\/\//i.test(relativePath)) {
-    return relativePath;
-  }
-
-  const normalizedPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-  const baseUrl = config.APP_URL.replace(/\/$/, '');
-  return `${baseUrl}${normalizedPath}`;
-}
-
 export function buildAttachmentUrl(filename: string): string {
   if (!filename) {
     return filename;
   }
 
-  if (/^http?:\/\//i.test(filename)) {
+  if (/^https?:\/\//i.test(filename)) {
     return filename;
   }
 
@@ -180,6 +166,10 @@ export function buildAttachmentUrl(filename: string): string {
   const basePath = config.ATTACHMENT_BASE_PATH.replace(/\/$/, '');
   const normalizedFilename = filename.startsWith('/') ? filename.slice(1) : filename;
   return `${baseUrl}${basePath}/${normalizedFilename}`;
+}
+
+export function buildAvatarUrl(relativePath: string): string {
+  return buildAttachmentUrl(relativePath);
 }
 
 /**
