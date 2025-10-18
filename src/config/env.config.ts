@@ -147,6 +147,43 @@ export function getAppUrl(): string {
   return config.APP_URL;
 }
 
+function normalizeBasePath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return '';
+  }
+  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
+}
+
+export function buildAttachmentUrl(rawPath: string): string {
+  if (!rawPath) {
+    return rawPath;
+  }
+
+  if (/^https?:\/\//i.test(rawPath)) {
+    return rawPath;
+  }
+
+  const baseUrl = config.APP_URL.replace(/\/$/, '');
+  const attachmentBase = normalizeBasePath(config.ATTACHMENT_BASE_PATH);
+  const normalizedInput = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+
+  if (attachmentBase && normalizedInput.startsWith(attachmentBase)) {
+    return `${baseUrl}${normalizedInput}`;
+  }
+
+  const trimmedInput = normalizedInput.replace(/^\/+/, '');
+  if (attachmentBase) {
+    return `${baseUrl}${attachmentBase}/${trimmedInput}`;
+  }
+
+  return `${baseUrl}/${trimmedInput}`;
+}
+
+export function buildAvatarUrl(relativePath: string): string {
+  return buildAttachmentUrl(relativePath);
+}
+
 export function getStorageConfig() {
   return {
     avatarPath: config.USER_AVATAR_STORAGE_PATH,

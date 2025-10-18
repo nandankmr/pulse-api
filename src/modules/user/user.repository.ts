@@ -95,7 +95,7 @@ export class UserRepository {
     }
   }
 
-  async updateProfile(id: string, data: { name?: string; password?: string }): Promise<User> {
+  async updateProfile(id: string, data: { name?: string; password?: string; avatarUrl?: string | null }): Promise<User> {
     try {
       logger.info('Updating user profile', { userId: id, fields: Object.keys(data) });
       const user = await prisma.user.update({
@@ -110,7 +110,7 @@ export class UserRepository {
     }
   }
 
-  async updateAvatar(id: string, avatarUrl: string): Promise<User> {
+  async updateAvatar(id: string, avatarUrl: string | null): Promise<User> {
     try {
       logger.info('Updating user avatar', { userId: id, avatarUrl });
       const user = await prisma.user.update({

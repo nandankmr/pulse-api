@@ -6,6 +6,7 @@ import { userCache } from '../../shared/utils/cache';
 import { PaginationOptions, PaginatedResult } from '../../shared/utils/pagination';
 import { hashPassword } from '../../shared/utils/password';
 import { ConflictError, ValidationError } from '../../shared/errors/app.errors';
+import { buildAvatarUrl } from '../../config/env.config';
 
 const userRepository = new UserRepository();
 
@@ -94,17 +95,20 @@ export class UserService {
     logger.info('User cache invalidated', { userId: id });
   }
 
-  async updateProfile(userId: string, payload: { name?: string; password?: string }): Promise<User> {
-    if (!payload.name && !payload.password) {
-      throw new ValidationError('Please provide name or password to update');
+  async updateProfile(userId: string, payload: { name?: string; password?: string; avatarUrl?: string | null }): Promise<User> {
+    if (!payload.name && !payload.password && payload.avatarUrl === undefined) {
+      throw new ValidationError('Please provide name, password, or avatar to update');
     }
 
-    const updateData: { name?: string; password?: string } = {};
-    if (payload.name) {
+    const updateData: { name?: string; password?: string; avatarUrl?: string | null } = {};
+    if (payload.name !== undefined) {
       updateData.name = payload.name;
     }
     if (payload.password) {
       updateData.password = await hashPassword(payload.password);
+    }
+    if (payload.avatarUrl !== undefined) {
+      updateData.avatarUrl = payload.avatarUrl;
     }
 
     const updatedUser = await userRepository.updateProfile(userId, updateData);
@@ -113,7 +117,7 @@ export class UserService {
     return safeUser;
   }
 
-  async updateAvatar(userId: string, avatarUrl: string): Promise<User> {
+  async updateAvatar(userId: string, avatarUrl: string | null): Promise<User> {
     const updatedUser = await userRepository.updateAvatar(userId, avatarUrl);
     const safeUser = this.sanitizeUser(updatedUser);
     await this.invalidateUserCache(userId);
@@ -130,7 +134,7 @@ export class UserService {
     void password;
     return {
       ...safeUser,
-      avatarUrl: safeUser.avatarUrl,
+      avatarUrl: safeUser.avatarUrl ? buildAvatarUrl(safeUser.avatarUrl) : safeUser.avatarUrl,
     };
   }
 }

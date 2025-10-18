@@ -3,6 +3,7 @@ import { ValidationError, UnauthorizedError, NotFoundError } from '../../shared/
 import type { AuthenticatedRequest } from '../../shared/middleware/auth.middleware';
 import { logger } from '../../shared/utils/logger';
 import type { PaginationOptions } from '../../shared/utils/pagination';
+import { buildAttachmentUrl } from '../../config/env.config';
 import { UserService } from './user.service';
 
 const userService = new UserService();
@@ -80,8 +81,8 @@ export class UserController {
         throw new UnauthorizedError('User authentication required');
       }
 
-      const { name, password } = req.body;
-      const updatedUser = await userService.updateProfile(userId, { name, password });
+      const { name, password, avatarUrl } = req.body;
+      const updatedUser = await userService.updateProfile(userId, { name, password, avatarUrl });
       res.json(updatedUser);
     } catch (error) {
       logger.error('Error updating user profile', {
@@ -102,19 +103,21 @@ export class UserController {
       }
 
       const body = req.body as { filename?: unknown; url?: unknown };
-      let avatarUrl: string | undefined;
+      let filename: string | undefined;
 
-      if (typeof body.url === 'string' && body.url.trim()) {
-        avatarUrl = body.url.trim();
-      } else if (typeof body.filename === 'string' && body.filename.trim()) {
-        avatarUrl = body.filename.trim();
+      if (typeof body.filename === 'string' && body.filename.trim()) {
+        filename = body.filename.trim();
+      } else if (typeof body.url === 'string' && body.url.trim()) {
+        const segments = body.url.trim().split('/');
+        filename = segments.pop() || undefined;
       }
 
-      if (!avatarUrl) {
+      if (!filename) {
         throw new ValidationError('Attachment filename or url is required');
       }
 
-      const updatedUser = await userService.updateAvatar(userId, avatarUrl);
+      const publicUrl = buildAttachmentUrl(filename);
+      const updatedUser = await userService.updateAvatar(userId, publicUrl);
       res.json(updatedUser);
     } catch (error) {
       logger.error('Error uploading user avatar', {
