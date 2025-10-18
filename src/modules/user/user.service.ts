@@ -6,7 +6,6 @@ import { userCache } from '../../shared/utils/cache';
 import { PaginationOptions, PaginatedResult } from '../../shared/utils/pagination';
 import { hashPassword } from '../../shared/utils/password';
 import { ConflictError, ValidationError } from '../../shared/errors/app.errors';
-import { buildAvatarUrl } from '../../config/env.config';
 
 const userRepository = new UserRepository();
 
@@ -128,9 +127,10 @@ export class UserService {
 
   private sanitizeUser(user: PrismaUser): User {
     const { password, ...safeUser } = user;
+    void password;
     return {
       ...safeUser,
-      avatarUrl: safeUser.avatarUrl ? buildAvatarUrl(safeUser.avatarUrl) : safeUser.avatarUrl,
+      avatarUrl: safeUser.avatarUrl,
     };
   }
 }

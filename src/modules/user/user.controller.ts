@@ -2,7 +2,6 @@ import type { Request, Response } from 'express';
 import { ValidationError, UnauthorizedError, NotFoundError } from '../../shared/errors/app.errors';
 import type { AuthenticatedRequest } from '../../shared/middleware/auth.middleware';
 import { logger } from '../../shared/utils/logger';
-import { buildAttachmentUrl } from '../../config/env.config';
 import type { PaginationOptions } from '../../shared/utils/pagination';
 import { UserService } from './user.service';
 
@@ -103,21 +102,19 @@ export class UserController {
       }
 
       const body = req.body as { filename?: unknown; url?: unknown };
-      let filename: string | undefined;
+      let avatarUrl: string | undefined;
 
-      if (typeof body.filename === 'string' && body.filename.trim()) {
-        filename = body.filename.trim();
-      } else if (typeof body.url === 'string' && body.url.trim()) {
-        const segments = body.url.trim().split('/');
-        filename = segments.pop() || undefined;
+      if (typeof body.url === 'string' && body.url.trim()) {
+        avatarUrl = body.url.trim();
+      } else if (typeof body.filename === 'string' && body.filename.trim()) {
+        avatarUrl = body.filename.trim();
       }
 
-      if (!filename) {
+      if (!avatarUrl) {
         throw new ValidationError('Attachment filename or url is required');
       }
 
-      const publicUrl = buildAttachmentUrl(filename);
-      const updatedUser = await userService.updateAvatar(userId, publicUrl);
+      const updatedUser = await userService.updateAvatar(userId, avatarUrl);
       res.json(updatedUser);
     } catch (error) {
       logger.error('Error uploading user avatar', {
