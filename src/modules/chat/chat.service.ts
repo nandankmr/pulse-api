@@ -3,6 +3,7 @@ import { GroupService } from '../group/group.service';
 import { UserRepository } from '../user/user.repository';
 import { NotFoundError, ValidationError, UnauthorizedError } from '../../shared/errors/app.errors';
 import { logger } from '../../shared/utils/logger';
+import { io } from '../../index';
 
 export interface ChatResponse {
   id: string;
@@ -368,11 +369,28 @@ export class ChatService {
 
       // Add additional members if provided
       if (data.memberIds && data.memberIds.length > 0) {
+        const initiallyAdded: string[] = [];
+
         for (const memberId of data.memberIds) {
           try {
             await this.groupService.addMember(group.id, userId, memberId, 'MEMBER');
+            initiallyAdded.push(memberId);
           } catch {
             logger.warn('Failed to add member to new group', { groupId: group.id, memberId });
+          }
+        }
+
+        if (initiallyAdded.length > 0 && io) {
+          for (const addedUserId of initiallyAdded) {
+            const payload = {
+              groupId: group.id,
+              userId: addedUserId,
+              addedBy: userId,
+              role: 'MEMBER' as const,
+            };
+
+            io.to(`group:${group.id}`).emit('group:member:added', payload);
+            io.to(`user:${addedUserId}`).emit('group:member:added', payload);
           }
         }
       }
@@ -542,15 +560,36 @@ export class ChatService {
     }
 
     // Add each member
+    const successfullyAdded: string[] = [];
+
     for (const memberId of memberIds) {
       try {
         await this.groupService.addMember(chatId, userId, memberId, 'MEMBER');
+        successfullyAdded.push(memberId);
       } catch {
         logger.warn('Failed to add member to group', { chatId, memberId });
       }
     }
 
-    logger.info('Members added to group', { userId, chatId, count: memberIds.length });
+    if (successfullyAdded.length > 0) {
+      logger.info('Members added to group', { userId, chatId, count: successfullyAdded.length });
+
+      if (io) {
+        for (const addedUserId of successfullyAdded) {
+          const payload = {
+            groupId: chatId,
+            userId: addedUserId,
+            addedBy: userId,
+            role: 'MEMBER' as const,
+          };
+
+          io.to(`group:${chatId}`).emit('group:member:added', payload);
+          io.to(`user:${addedUserId}`).emit('group:member:added', payload);
+        }
+      }
+    } else {
+      logger.warn('No members were added to group', { userId, chatId });
+    }
   }
 
   /**
