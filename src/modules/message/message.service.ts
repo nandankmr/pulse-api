@@ -62,6 +62,18 @@ export class MessageService {
     if (options.location !== undefined) {
       createPayload.location = options.location;
     }
+    if (options.systemType !== undefined) {
+      createPayload.systemType = options.systemType;
+    }
+    if (options.metadata !== undefined) {
+      createPayload.metadata = options.metadata;
+    }
+    if (options.actorId !== undefined) {
+      createPayload.actorId = options.actorId;
+    }
+    if (options.targetUserId !== undefined) {
+      createPayload.targetUserId = options.targetUserId;
+    }
 
     const message = await this.messageRepository.createMessage(createPayload);
 

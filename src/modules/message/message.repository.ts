@@ -4,6 +4,20 @@ import { prisma } from '../../shared/services/prisma.service';
 import { logger } from '../../shared/utils/logger';
 import { PaginationOptions, PaginationUtils } from '../../shared/utils/pagination';
 
+export const SYSTEM_MESSAGE_TYPES = [
+  'GROUP_CREATED',
+  'MEMBER_ADDED',
+  'MEMBER_REMOVED',
+  'MEMBER_LEFT',
+  'MEMBER_PROMOTED',
+  'MEMBER_DEMOTED',
+  'GROUP_RENAMED',
+  'GROUP_DESCRIPTION_UPDATED',
+  'GROUP_AVATAR_UPDATED',
+] as const;
+
+export type SystemMessageTypeValue = (typeof SYSTEM_MESSAGE_TYPES)[number];
+
 export interface SendMessageData {
   senderId: string;
   receiverId?: string;
@@ -13,6 +27,10 @@ export interface SendMessageData {
   content?: string | null;
   mediaUrl?: string | null;
   location?: Record<string, unknown> | null;
+  systemType?: SystemMessageTypeValue | null;
+  metadata?: Record<string, unknown> | null;
+  actorId?: string | null;
+  targetUserId?: string | null;
 }
 
 export type MessageReceiptStatus = 'DELIVERED' | 'READ';
@@ -71,8 +89,29 @@ export class MessageRepository {
         messageData.location = data.location === null ? Prisma.JsonNull : (data.location as Prisma.InputJsonValue);
       }
 
+      const extendedData: Record<string, unknown> = {};
+
+      if (data.systemType !== undefined) {
+        extendedData.systemType = data.systemType ?? null;
+      }
+
+      if (data.metadata !== undefined) {
+        extendedData.metadata = data.metadata === null ? Prisma.JsonNull : (data.metadata as Prisma.InputJsonValue);
+      }
+
+      if (data.actorId !== undefined) {
+        extendedData.actorId = data.actorId ?? null;
+      }
+
+      if (data.targetUserId !== undefined) {
+        extendedData.targetUserId = data.targetUserId ?? null;
+      }
+
       const message = await prisma.message.create({
-        data: messageData,
+        data: {
+          ...messageData,
+          ...extendedData,
+        } as Prisma.MessageUncheckedCreateInput,
       });
       logger.info('Message created', { messageId: message.id });
       return message;
@@ -160,8 +199,7 @@ export class MessageRepository {
 
   async upsertReceipt(data: UpsertReceiptData): Promise<MessageReceipt> {
     try {
-      const receiptDelegate = (prisma as unknown as { messageReceipt: { upsert: (...args: any[]) => Promise<MessageReceipt> } }).messageReceipt;
-      const receipt = await receiptDelegate.upsert({
+      const receipt = await prisma.messageReceipt.upsert({
         where: {
           messageId_userId: {
             messageId: data.messageId,
@@ -196,10 +234,8 @@ export class MessageRepository {
 
     const uniqueParticipantIds = Array.from(new Set(participantIds));
 
-    const receiptDelegate = (prisma as unknown as { messageReceipt: { upsert: (...args: any[]) => Promise<MessageReceipt> } }).messageReceipt;
-
     const operations = uniqueParticipantIds.map((userId) =>
-      receiptDelegate.upsert({
+      prisma.messageReceipt.upsert({
         where: {
           messageId_userId: {
             messageId,

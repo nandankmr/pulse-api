@@ -32,6 +32,8 @@ model User {
   pushTokens      PushToken[]
   media          Media[]    @relation("MediaUploader")
   messageReceipts MessageReceipt[]
+  systemMessagesActed    Message[]  @relation("SystemActor")
+  systemMessagesTargeted Message[]  @relation("SystemTarget")
 
   @@map("users")
 }
@@ -47,6 +49,10 @@ model Message {
   content     String?
   mediaUrl    String?   // S3 / OCI media URL
   location    Json?     // { latitude, longitude }
+  systemType  SystemMessageType?
+  metadata    Json?
+  actorId     String?
+  targetUserId String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   editedAt    DateTime? // When message was last edited
@@ -59,6 +65,8 @@ model Message {
   conversation DirectConversation? @relation("ConversationMessages", fields: [conversationId], references: [id])
   media       Media?    @relation("MessageMedia")
   receipts    MessageReceipt[]
+  actor       User?     @relation("SystemActor", fields: [actorId], references: [id])
+  targetUser  User?     @relation("SystemTarget", fields: [targetUserId], references: [id])
 
   @@map("messages")
 }
@@ -224,6 +232,18 @@ enum MessageReceiptStatus {
 enum GroupRole {
   ADMIN
   MEMBER
+}
+
+enum SystemMessageType {
+  GROUP_CREATED
+  MEMBER_ADDED
+  MEMBER_REMOVED
+  MEMBER_LEFT
+  MEMBER_PROMOTED
+  MEMBER_DEMOTED
+  GROUP_RENAMED
+  GROUP_DESCRIPTION_UPDATED
+  GROUP_AVATAR_UPDATED
 }
 
 enum TokenType {

@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { Group, GroupMember, GroupRole } from '../../generated/prisma';
 import { GroupRepository, GroupInvitationRecord } from './group.repository';
+import { SystemMessageService } from '../message/system-message.service';
 import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from '../../shared/errors/app.errors';
 import { logger } from '../../shared/utils/logger';
 
@@ -41,6 +42,7 @@ const MAX_INVITATION_TOKEN_ATTEMPTS = 5;
 
 export class GroupService {
   private repository = new GroupRepository();
+  private systemMessageService = new SystemMessageService();
 
   async createGroup(ownerId: string, data: { name: string; description?: string; avatarUrl?: string }): Promise<ReturnType<typeof sanitizeGroup>> {
     const group = await this.repository.createGroup({
@@ -50,6 +52,9 @@ export class GroupService {
       ownerId,
     });
     logger.info('Group created via service', { groupId: group.id, ownerId });
+
+    await this.systemMessageService.publishGroupCreated(group.id, ownerId);
+
     return sanitizeGroup(group);
   }
 
@@ -80,6 +85,10 @@ export class GroupService {
       throw new ValidationError('At least one field must be provided to update the group');
     }
 
+    const previousName = group.name;
+    const previousDescription = group.description ?? null;
+    const previousAvatarUrl = group.avatarUrl ?? null;
+
     const normalized = {
       ...(payload.name !== undefined ? { name: payload.name } : {}),
       ...(payload.description !== undefined ? { description: payload.description } : {}),
@@ -92,6 +101,28 @@ export class GroupService {
       throw new NotFoundError('Group');
     }
     logger.info('Group updated via service', { groupId, requesterId });
+
+    if (payload.name !== undefined && payload.name !== previousName) {
+      await this.systemMessageService.publishGroupRenamed(groupId, requesterId, {
+        previousName,
+        newName: payload.name,
+      });
+    }
+
+    if (payload.description !== undefined && payload.description !== previousDescription) {
+      await this.systemMessageService.publishGroupDescriptionUpdated(groupId, requesterId, {
+        previousDescription,
+        newDescription: payload.description ?? null,
+      });
+    }
+
+    if (payload.avatarUrl !== undefined && payload.avatarUrl !== previousAvatarUrl) {
+      await this.systemMessageService.publishGroupAvatarUpdated(groupId, requesterId, {
+        previousAvatarUrl,
+        newAvatarUrl: payload.avatarUrl ?? null,
+      });
+    }
+
     return sanitizeGroup(refreshed);
   }
 
@@ -127,6 +158,11 @@ export class GroupService {
       throw new NotFoundError('Group');
     }
     logger.info('Member added to group via service', { groupId, addedUserId: userId, requesterId });
+
+    await this.systemMessageService.publishMemberAdded(groupId, requesterId, userId, {
+      role,
+    });
+
     return sanitizeGroup(updatedGroup);
   }
 
@@ -143,6 +179,8 @@ export class GroupService {
       throw new ValidationError('Member not found in group');
     }
 
+    const previousRole = member.role;
+
     if (member.role === GroupRole.ADMIN && role !== GroupRole.ADMIN) {
       const adminCount = await this.repository.countAdmins(groupId);
       if (adminCount <= 1) {
@@ -156,6 +194,12 @@ export class GroupService {
       throw new NotFoundError('Group');
     }
     logger.info('Member role updated via service', { groupId, userId, role, requesterId });
+
+    await this.systemMessageService.publishMemberRoleChanged(groupId, requesterId, userId, {
+      previousRole,
+      newRole: role,
+    });
+
     return sanitizeGroup(updatedGroup);
   }
 
@@ -193,6 +237,13 @@ export class GroupService {
       throw new NotFoundError('Group');
     }
     logger.info('Member removed from group via service', { groupId, removedUserId: userId, requesterId });
+
+    if (requesterId === userId) {
+      await this.systemMessageService.publishMemberLeft(groupId, requesterId);
+    } else {
+      await this.systemMessageService.publishMemberRemoved(groupId, requesterId, userId);
+    }
+
     return sanitizeGroup(updatedGroup);
   }
 
@@ -274,6 +325,12 @@ export class GroupService {
     }
 
     logger.info('Group joined via invitation token', { groupId, userId: requester.id });
+
+    await this.systemMessageService.publishMemberAdded(groupId, requester.id, requester.id, {
+      role: GroupRole.MEMBER,
+      invitedBy: invitation.inviterId,
+    });
+
     return sanitizeGroup(updatedGroup);
   }
 

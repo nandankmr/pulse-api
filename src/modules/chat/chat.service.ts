@@ -664,38 +664,25 @@ export class ChatService {
    * Update group details (name, description, avatar)
    */
   async updateGroupDetails(chatId: string, userId: string, data: { name?: string; description?: string; avatar?: string }) {
-    const group = await prisma.group.findUnique({
-      where: { id: chatId },
-      include: { members: true },
-    });
-
-    if (!group) {
-      throw new NotFoundError('Group');
+    const normalizedPayload: { name?: string; description?: string | null; avatarUrl?: string | null } = {};
+    if (data.name !== undefined) {
+      normalizedPayload.name = data.name;
+    }
+    if (data.description !== undefined) {
+      normalizedPayload.description = data.description;
+    }
+    if (data.avatar !== undefined) {
+      normalizedPayload.avatarUrl = data.avatar;
     }
 
-    // Check if user is an admin
-    const userMember = group.members.find((m) => m.userId === userId);
-    if (!userMember || userMember.role !== 'ADMIN') {
-      throw new UnauthorizedError('Only admins can update group details');
-    }
-
-    const updateData: { name?: string; description?: string; avatarUrl?: string } = {};
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.avatar !== undefined) updateData.avatarUrl = data.avatar;
-
-    const updatedGroup = await prisma.group.update({
-      where: { id: chatId },
-      data: updateData,
-    });
-
-    logger.info('Group details updated', { userId, chatId, fields: Object.keys(updateData) });
+    const updatedGroup = await this.groupService.updateGroup(chatId, userId, normalizedPayload);
+    logger.info('Group details updated', { userId, chatId, fields: Object.keys(normalizedPayload).filter((key) => normalizedPayload[key as keyof typeof normalizedPayload] !== undefined) });
 
     return {
       id: updatedGroup.id,
       name: updatedGroup.name,
       description: updatedGroup.description,
-      avatar: updatedGroup.avatarUrl,
+      avatar: updatedGroup.avatarUrl ?? undefined,
     };
   }
 
@@ -703,45 +690,7 @@ export class ChatService {
    * Promote or demote a member (change role)
    */
   async updateMemberRole(chatId: string, userId: string, memberId: string, role: 'ADMIN' | 'MEMBER') {
-    const group = await prisma.group.findUnique({
-      where: { id: chatId },
-      include: { members: true },
-    });
-
-    if (!group) {
-      throw new NotFoundError('Group');
-    }
-
-    // Check if user is an admin
-    const userMember = group.members.find((m) => m.userId === userId);
-    if (!userMember || userMember.role !== 'ADMIN') {
-      throw new UnauthorizedError('Only admins can change member roles');
-    }
-
-    // Check if target member exists
-    const targetMember = group.members.find((m) => m.userId === memberId);
-    if (!targetMember) {
-      throw new NotFoundError('Member not found in this group');
-    }
-
-    // Prevent demoting the last admin
-    if (role === 'MEMBER' && targetMember.role === 'ADMIN') {
-      const adminCount = group.members.filter((m) => m.role === 'ADMIN').length;
-      if (adminCount <= 1) {
-        throw new ValidationError('Cannot demote the last admin');
-      }
-    }
-
-    await prisma.groupMember.update({
-      where: {
-        groupId_userId: {
-          groupId: chatId,
-          userId: memberId,
-        },
-      },
-      data: { role },
-    });
-
+    await this.groupService.updateMemberRole(chatId, userId, memberId, role === 'ADMIN' ? 'ADMIN' : 'MEMBER');
     logger.info('Member role updated', { userId, chatId, memberId, newRole: role });
 
     return { message: 'Member role updated successfully' };

@@ -1,4 +1,4 @@
-import type { Message, MessageType } from '../../generated/prisma';
+import type { Message, MessageType, SystemMessageType } from '../../generated/prisma';
 import type { MessageReceipt } from './message.repository';
 
 export interface AttachmentPresenter {
@@ -20,6 +20,7 @@ export interface EnrichedMessagePayload {
   timestamp: string;
   isRead: boolean;
   isSent: boolean;
+  type: MessageType;
   attachments: AttachmentPresenter[];
   replyTo: string | null;
   deliveredTo: string[];
@@ -27,6 +28,10 @@ export interface EnrichedMessagePayload {
   participantIds: string[];
   editedAt?: string | null;
   deletedAt?: string | null;
+  systemType?: SystemMessageType | null;
+  metadata?: Record<string, unknown> | null;
+  actorId?: string | null;
+  targetUserId?: string | null;
 }
 
 interface PresentMessageOptions {
@@ -97,11 +102,20 @@ const buildMediaAttachment = (messageId: string, type: MessageType, mediaUrl: st
   ];
 };
 
+const normalizeMetadata = (metadata: Message['metadata']): Record<string, unknown> | null => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+
+  return metadata as Record<string, unknown>;
+};
+
 export const presentMessage = (options: PresentMessageOptions): EnrichedMessagePayload => {
   const { message, sender = null, receipts = [], participantIds = [], currentUserId, chatId } = options;
 
   const locationAttachment = buildLocationAttachment(message.id, message.location ?? null);
   const mediaAttachment = buildMediaAttachment(message.id, message.type, message.mediaUrl ?? null);
+  const metadata = normalizeMetadata(message.metadata ?? null);
 
   const deliveredToSet = new Set<string>();
   const readBySet = new Set<string>();
@@ -122,7 +136,7 @@ export const presentMessage = (options: PresentMessageOptions): EnrichedMessageP
   const isRead = isOwnMessage || readBy.includes(currentUserId);
   const senderName = sender?.name ?? (isOwnMessage ? 'You' : 'Unknown');
   const senderAvatar = sender?.avatarUrl ?? null;
-  const content = message.content ?? '';
+  const content = message.content ?? null;
 
   return {
     id: message.id,
@@ -134,6 +148,7 @@ export const presentMessage = (options: PresentMessageOptions): EnrichedMessageP
     timestamp: message.createdAt.toISOString(),
     isRead,
     isSent: true,
+    type: message.type,
     attachments: [...mediaAttachment, ...locationAttachment],
     replyTo: null,
     deliveredTo,
@@ -141,5 +156,9 @@ export const presentMessage = (options: PresentMessageOptions): EnrichedMessageP
     participantIds: Array.from(new Set(participantIds)),
     editedAt: message.editedAt ? message.editedAt.toISOString() : null,
     deletedAt: message.deletedAt ? message.deletedAt.toISOString() : null,
+    systemType: message.systemType ?? null,
+    metadata,
+    actorId: message.actorId ?? null,
+    targetUserId: message.targetUserId ?? null,
   };
 };
