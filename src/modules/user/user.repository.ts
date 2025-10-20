@@ -40,10 +40,27 @@ export class UserRepository {
     }
   }
 
-  async save(userData: { name: string; email: string; password: string }): Promise<User> {
+  async findByFirebaseUid(firebaseUid: string): Promise<User | null> {
     try {
-      const { password: _password, ...loggable } = userData;
-      logger.info('Saving new user', { userEmail: loggable.email, userName: loggable.name });
+      logger.info('Finding user by Firebase UID', { firebaseUid });
+      const user = await prisma.user.findUnique({
+        where: { firebaseUid },
+      });
+      if (user) {
+        logger.info('User found by Firebase UID', { userId: user.id, firebaseUid });
+      } else {
+        logger.warn('User not found by Firebase UID', { firebaseUid });
+      }
+      return user;
+    } catch (error) {
+      logger.error('Error finding user by Firebase UID', { firebaseUid, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
+      throw error;
+    }
+  }
+
+  async save(userData: { name: string; email: string; password?: string }): Promise<User> {
+    try {
+      logger.info('Saving new user', { userEmail: userData.email, userName: userData.name });
       const user = await prisma.user.create({
         data: userData,
       });
@@ -91,6 +108,52 @@ export class UserRepository {
       return user;
     } catch (error) {
       logger.error('Error marking user as verified', { userId: id, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
+      throw error;
+    }
+  }
+
+  async attachFirebaseUid(id: string, firebaseUid: string): Promise<User> {
+    try {
+      logger.info('Attaching Firebase UID to user', { userId: id, firebaseUid });
+      const user = await prisma.user.update({
+        where: { id },
+        data: { firebaseUid },
+      });
+      logger.info('Firebase UID attached to user', { userId: id, firebaseUid });
+      return user;
+    } catch (error) {
+      logger.error('Error attaching Firebase UID to user', { userId: id, firebaseUid, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
+      throw error;
+    }
+  }
+
+  async createFirebaseUser(input: {
+    firebaseUid: string;
+    email: string;
+    name: string;
+    avatarUrl: string | null;
+    emailVerified: boolean;
+  }): Promise<User> {
+    try {
+      logger.info('Creating Firebase user record', { firebaseUid: input.firebaseUid, email: input.email });
+      const user = await prisma.user.create({
+        data: {
+          firebaseUid: input.firebaseUid,
+          email: input.email,
+          name: input.name,
+          avatarUrl: input.avatarUrl,
+          verified: input.emailVerified,
+        },
+      });
+      logger.info('Firebase user record created', { userId: user.id, firebaseUid: input.firebaseUid });
+      return user;
+    } catch (error) {
+      logger.error('Error creating Firebase user record', {
+        firebaseUid: input.firebaseUid,
+        email: input.email,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   }

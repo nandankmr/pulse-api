@@ -10,6 +10,8 @@ import { RegisterInput, LoginInput, RefreshInput, VerifyEmailInput, ResendVerifi
 import { logger } from '../../shared/utils/logger';
 import { generateOtp } from '../../shared/utils/otp';
 import { sendMail } from '../../shared/services/mail.service';
+import { getFirebaseAuth } from '../../shared/services/firebaseAdmin.service';
+import { resolveFirebaseUser } from '../../shared/services/firebaseUserResolver';
 
 interface AuthTokens {
   accessToken: string;
@@ -41,6 +43,37 @@ export class AuthService {
     return cleaned;
   }
 
+  private get useFirebaseAuth(): boolean {
+    return this.authConfig.provider === 'firebase';
+  }
+
+  private async getFirebaseUserFromIdToken(firebaseIdToken: string): Promise<User> {
+    const firebaseAuth = getFirebaseAuth();
+    if (!firebaseAuth) {
+      throw new UnauthorizedError('Firebase authentication not configured');
+    }
+
+    const decoded = await firebaseAuth.verifyIdToken(firebaseIdToken, true);
+    return resolveFirebaseUser(decoded);
+  }
+
+  private buildFirebaseAuthResponse(
+    user: User,
+    deviceContext: DeviceContext,
+    firebaseIdToken: string
+  ): AuthResponse {
+    const deviceId = deviceContext.deviceId ?? randomUUID();
+
+    return {
+      user: this.sanitizeUser(user),
+      tokens: {
+        accessToken: firebaseIdToken,
+        refreshToken: '',
+        deviceId,
+      },
+    };
+  }
+
   private parseExpiresIn(ttl: string): number {
     const trimmed = ttl.trim();
     const match = trimmed.match(/^(\d+)([smhd])?$/i);
@@ -62,9 +95,33 @@ export class AuthService {
   }
 
   async register(input: RegisterInput): Promise<AuthResponse> {
+    if (this.useFirebaseAuth) {
+      if (!input.firebaseIdToken) {
+        throw new ValidationError('firebaseIdToken is required for registration');
+      }
+
+      const deviceContext = this.buildDeviceContext({
+        deviceId: input.deviceId ?? null,
+        deviceName: input.deviceName ?? null,
+        platform: input.platform ?? null,
+      });
+
+      let user = await this.getFirebaseUserFromIdToken(input.firebaseIdToken);
+
+      if (input.name && user.name !== input.name) {
+        user = await this.userRepository.updateProfile(user.id, { name: input.name });
+      }
+
+      return this.buildFirebaseAuthResponse(user, deviceContext, input.firebaseIdToken);
+    }
+
     const existingUser = await this.userRepository.findByEmail(input.email);
     if (existingUser) {
       throw new ConflictError('Email already in use');
+    }
+
+    if (!input.password) {
+      throw new ValidationError('Password is required');
     }
 
     const hashedPassword = await hashPassword(input.password);
@@ -184,9 +241,28 @@ export class AuthService {
   }
 
   async login(input: LoginInput): Promise<AuthResponse> {
+    if (this.useFirebaseAuth) {
+      if (!input.firebaseIdToken) {
+        throw new ValidationError('firebaseIdToken is required for login');
+      }
+
+      const deviceContext = this.buildDeviceContext({
+        deviceId: input.deviceId ?? null,
+        deviceName: input.deviceName ?? null,
+        platform: input.platform ?? null,
+      });
+
+      const user = await this.getFirebaseUserFromIdToken(input.firebaseIdToken);
+      return this.buildFirebaseAuthResponse(user, deviceContext, input.firebaseIdToken);
+    }
+
     const user = await this.userRepository.findByEmail(input.email);
     if (!user || !user.password) {
       throw new UnauthorizedError('Invalid email or password');
+    }
+
+    if (!input.password) {
+      throw new ValidationError('Password is required');
     }
 
     const isMatch = await comparePassword(input.password, user.password);
@@ -221,8 +297,25 @@ export class AuthService {
   }
 
   async refresh(input: RefreshInput): Promise<AuthResponse> {
+    if (this.useFirebaseAuth) {
+      if (!input.firebaseIdToken) {
+        throw new UnauthorizedError('Firebase ID token required for refresh');
+      }
+
+      const user = await this.getFirebaseUserFromIdToken(input.firebaseIdToken);
+      const deviceContext = this.buildDeviceContext({
+        deviceId: input.deviceId ?? null,
+      });
+
+      return this.buildFirebaseAuthResponse(user, deviceContext, input.firebaseIdToken);
+    }
+
     let payload: JwtPayload & { type?: string;deviceId?: string };
     try {
+      if (!input.refreshToken) {
+        throw new UnauthorizedError('Refresh token is required');
+      }
+
       const decoded = verify(input.refreshToken, this.authConfig.secret);
       if (typeof decoded === 'string') {
         throw new UnauthorizedError('Invalid refresh token payload');
@@ -282,6 +375,10 @@ export class AuthService {
   }
 
   async verifyEmail(input: VerifyEmailInput): Promise<Omit<User, 'password'>> {
+    if (this.useFirebaseAuth) {
+      throw new ValidationError('Email verification is managed by Firebase');
+    }
+
     const user = await this.userRepository.findByEmail(input.email);
     if (!user) {
       throw new NotFoundError('User');
@@ -431,6 +528,10 @@ export class AuthService {
   }
 
   async resendVerification(input: ResendVerificationInput): Promise<{ message: string }> {
+    if (this.useFirebaseAuth) {
+      throw new ValidationError('Email verification is managed by Firebase');
+    }
+
     const user = await this.userRepository.findByEmail(input.email);
     if (!user) {
       throw new NotFoundError('User');
@@ -445,6 +546,14 @@ export class AuthService {
   }
 
   async logout(input: LogoutInput): Promise<{ message: string }> {
+    if (this.useFirebaseAuth) {
+      return { message: 'Logged out successfully' };
+    }
+
+    if (!input.refreshToken || !input.deviceId) {
+      throw new ValidationError('refreshToken and deviceId are required');
+    }
+
     const session = await prisma.deviceSession.findFirst({
       where: {
         deviceId: input.deviceId,
@@ -481,6 +590,10 @@ export class AuthService {
   }
 
   async forgotPassword(input: ForgotPasswordInput): Promise<{ message: string }> {
+    if (this.useFirebaseAuth) {
+      throw new ValidationError('Password reset is managed by Firebase');
+    }
+
     const user = await this.userRepository.findByEmail(input.email);
     if (!user) {
       return { message: 'If the email exists, a password reset code has been sent' };
@@ -536,6 +649,10 @@ export class AuthService {
   }
 
   async resetPassword(input: ResetPasswordInput): Promise<{ message: string }> {
+    if (this.useFirebaseAuth) {
+      throw new ValidationError('Password reset is managed by Firebase');
+    }
+
     const user = await this.userRepository.findByEmail(input.email);
     if (!user) {
       throw new ValidationError('Invalid reset code or email');
@@ -577,6 +694,10 @@ export class AuthService {
   }
 
   async changePassword(userId: string, input: ChangePasswordInput): Promise<{ message: string }> {
+    if (this.useFirebaseAuth) {
+      throw new ValidationError('Password changes are managed by Firebase');
+    }
+
     const user = await this.userRepository.findById(userId);
     if (!user || !user.password) {
       throw new NotFoundError('User');

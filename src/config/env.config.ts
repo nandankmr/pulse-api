@@ -28,6 +28,7 @@ export interface EnvironmentConfig {
   API_VERSION: string;
   API_PREFIX: string;
   CACHE_TTL: number;
+  AUTH_PROVIDER?: 'legacy' | 'firebase';
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_CLIENT_EMAIL?: string;
   FIREBASE_PRIVATE_KEY?: string;
@@ -49,6 +50,7 @@ function validateEnvironment(): EnvironmentConfig {
     const firebaseProjectId = process.env.FIREBASE_PROJECT_ID;
     const firebaseClientEmail = process.env.FIREBASE_CLIENT_EMAIL;
     const firebasePrivateKey = process.env.FIREBASE_PRIVATE_KEY;
+    const authProvider = process.env.AUTH_PROVIDER as 'legacy' | 'firebase' | undefined;
 
     const config: EnvironmentConfig = {
       NODE_ENV: getEnvVar('NODE_ENV', 'development') as EnvironmentConfig['NODE_ENV'],
@@ -69,6 +71,7 @@ function validateEnvironment(): EnvironmentConfig {
       API_VERSION: getEnvVar('API_VERSION', 'v1'),
       API_PREFIX: getEnvVar('API_PREFIX', '/api'),
       CACHE_TTL: getEnvVar('CACHE_TTL', '300', Number),
+      ...(authProvider ? { AUTH_PROVIDER: authProvider } : {}),
       ...(firebaseProjectId ? { FIREBASE_PROJECT_ID: firebaseProjectId } : {}),
       ...(firebaseClientEmail ? { FIREBASE_CLIENT_EMAIL: firebaseClientEmail } : {}),
       ...(firebasePrivateKey ? { FIREBASE_PRIVATE_KEY: firebasePrivateKey } : {}),
@@ -130,6 +133,21 @@ export function getAuthConfig() {
     accessTokenTtl: config.JWT_EXPIRES_IN,
     refreshTokenTtl: config.JWT_REFRESH_EXPIRES_IN,
     secret: config.JWT_SECRET,
+    provider: config.AUTH_PROVIDER ?? 'legacy',
+  };
+}
+
+export function getFirebaseConfig(): { projectId: string; clientEmail: string; privateKey: string } | null {
+  if (!config.FIREBASE_PROJECT_ID || !config.FIREBASE_CLIENT_EMAIL || !config.FIREBASE_PRIVATE_KEY) {
+    return null;
+  }
+
+  const privateKey = config.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+
+  return {
+    projectId: config.FIREBASE_PROJECT_ID,
+    clientEmail: config.FIREBASE_CLIENT_EMAIL,
+    privateKey,
   };
 }
 
@@ -206,18 +224,6 @@ export function getLoggingConfig() {
 export function getCacheConfig() {
   return {
     ttl: config.CACHE_TTL,
-  };
-}
-
-export function getFirebaseConfig() {
-  if (!config.FIREBASE_PROJECT_ID || !config.FIREBASE_CLIENT_EMAIL || !config.FIREBASE_PRIVATE_KEY) {
-    return null;
-  }
-
-  return {
-    projectId: config.FIREBASE_PROJECT_ID,
-    clientEmail: config.FIREBASE_CLIENT_EMAIL,
-    privateKey: config.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   };
 }
 

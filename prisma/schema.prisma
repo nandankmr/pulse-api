@@ -16,7 +16,8 @@ model User {
   id             String     @id @default(uuid())
   name           String
   email          String     @unique
-  password       String
+  password       String?
+  firebaseUid    String?    @unique
   avatarUrl      String?
   verified       Boolean    @default(false)
   createdAt      DateTime   @default(now())

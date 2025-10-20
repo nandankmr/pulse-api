@@ -7,19 +7,22 @@ export const registerSchema = z.object({
   deviceId: z.string().optional(),
   deviceName: z.string().optional(),
   platform: z.string().optional(),
+  firebaseIdToken: z.string().optional(),
 });
 
 export const loginSchema = z.object({
   email: z.string().email('Valid email is required'),
-  password: z.string().min(1, 'Password is required'),
+  password: z.string().optional(),
   deviceId: z.string().optional(),
   deviceName: z.string().optional(),
   platform: z.string().optional(),
+  firebaseIdToken: z.string().optional(),
 });
 
 export const refreshSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
+  refreshToken: z.string().optional(),
   deviceId: z.string().optional(),
+  firebaseIdToken: z.string().optional(),
 });
 
 export const verifyEmailSchema = z.object({
@@ -35,8 +38,8 @@ export const resendVerificationSchema = z.object({
 });
 
 export const logoutSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
-  deviceId: z.string().min(1, 'Device ID is required'),
+  refreshToken: z.string().optional(),
+  deviceId: z.string().optional(),
 });
 
 export const forgotPasswordSchema = z.object({
