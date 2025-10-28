@@ -15,6 +15,8 @@ import type { SendMessageOptions } from '../modules/message/message.service';
 import { presentMessage } from '../modules/message/message.presenter';
 import type { EnrichedMessagePayload } from '../modules/message/message.presenter';
 import { prisma } from '../shared/services/prisma.service';
+import { getFirebaseAuth } from '../shared/services/firebaseAdmin.service';
+import { resolveFirebaseUser } from '../shared/services/firebaseUserResolver';
 
 export interface SocketAuthPayload {
   userId: string;
@@ -213,12 +215,35 @@ function extractToken(socket: Socket): string | null {
   return null;
 }
 
-function authenticateSocket(socket: Socket): SocketAuthPayload {
+async function authenticateSocket(socket: Socket): Promise<SocketAuthPayload> {
   const token = extractToken(socket);
   const authConfig = getAuthConfig();
 
   if (!token) {
     throw new UnauthorizedError('Authentication token missing');
+  }
+
+  if (authConfig.provider === 'firebase') {
+    const firebaseAuth = getFirebaseAuth();
+    if (!firebaseAuth) {
+      throw new UnauthorizedError('Firebase authentication not configured');
+    }
+
+    try {
+      const decoded = await firebaseAuth.verifyIdToken(token, true);
+      const firebaseUser = await resolveFirebaseUser(decoded);
+
+      return {
+        userId: firebaseUser.id,
+        email: firebaseUser.email ?? undefined,
+        name: firebaseUser.name ?? undefined,
+      };
+    } catch (error) {
+      logger.warn('Failed to authenticate socket with Firebase token', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new UnauthorizedError('Invalid or expired authentication token');
+    }
   }
 
   try {
@@ -281,9 +306,9 @@ export function createRealtimeServer(app: Application) {
     });
   }
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
-      const user = authenticateSocket(socket);
+      const user = await authenticateSocket(socket);
       (socket as AuthedSocket).data.user = user;
       next();
     } catch (error) {
